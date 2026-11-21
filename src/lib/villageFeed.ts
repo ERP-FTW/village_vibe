@@ -204,8 +204,25 @@ export async function readVillageFeed(
     if (!current || event.created_at > current.created_at) newest.set(key, event);
   }
 
-  // Apply moderation, with one request for the tribes behind every candidate.
-  const trust = makeVillageTrust(await loadTribes(nostr, [...newest.values()], signal));
+  // Apply moderation. In parallel: the tribes behind every candidate, and the promotion and
+  // feature labels for exactly these candidates (the discovery query above only sees the
+  // newest labels overall, so older labels for this content could be missing from it).
+  const candidateAddresses = [...newest.keys()];
+  const [tribes, scopedLabels] = await Promise.all([
+    loadTribes(nostr, [...newest.values()], signal),
+    candidateAddresses.length
+      ? nostr.query([{ kinds: [1985], '#l': [PROMOTED, FEATURED], '#a': candidateAddresses, limit: candidateAddresses.length * 5 + 50 }], { signal })
+      : Promise.resolve([] as NostrEvent[]),
+  ]);
+  const seenLabels = new Set(labelEvents.map(label => label.id));
+  for (const label of scopedLabels) {
+    if (seenLabels.has(label.id) || !labelValue(label)) continue;
+    seenLabels.add(label.id);
+    for (const [name, address] of label.tags) {
+      if (name === 'a' && address) labelsFor.set(address, [...(labelsFor.get(address) ?? []), label]);
+    }
+  }
+  const trust = makeVillageTrust(tribes);
   const events: NostrEvent[] = [];
   const featured = new Set<string>();
   for (const [address, event] of newest) {

@@ -1,6 +1,9 @@
 import { useState } from "react";
 import type { NostrEvent } from "@nostrify/nostrify";
-import { useEventActions } from "@/hooks/useEventCoordination";
+import { ACTION_STATUSES, useEventActions, useUpdateAction, type ActionStatus, type EventAction } from "@/hooks/useEventCoordination";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useToast } from "@/hooks/useToast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,7 +16,45 @@ interface EventActionsTabProps {
   canManage: boolean;
 }
 
+/** Status picker for people allowed to update a task: managers, its creator and its assignee. */
+function TaskStatusControl({ event, action }: { event: NostrEvent; action: EventAction }) {
+  const { mutate: updateAction, isPending } = useUpdateAction();
+  const { toast } = useToast();
+  const dTag = event.tags.find(([n]) => n === 'd')?.[1] ?? '';
+  return (
+    <Select
+      value={action.status}
+      disabled={isPending}
+      onValueChange={(status) => updateAction({
+        actionId: action.id,
+        actionEventId: action.nostrId,
+        eventId: event.id,
+        eventKind: event.kind,
+        eventAuthor: event.pubkey,
+        eventDTag: dTag,
+        status: status as ActionStatus,
+      }, {
+        onError: (err) => toast({
+          title: "Error",
+          description: err instanceof Error ? err.message : "Failed to update the task",
+          variant: "destructive",
+        }),
+      })}
+    >
+      <SelectTrigger className="h-8 w-36" aria-label={`Status of ${action.title}`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {ACTION_STATUSES.map(status => (
+          <SelectItem key={status} value={status}>{status}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function EventActionsTab({ event, canManage }: EventActionsTabProps) {
+  const { user } = useCurrentUser();
   const { data: actions, isLoading } = useEventActions(event);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
@@ -94,6 +135,9 @@ export function EventActionsTab({ event, canManage }: EventActionsTabProps) {
                       </div>
                     )}
                   </div>
+                  {user && (canManage || action.createdBy === user.pubkey || action.assignedTo === user.pubkey) && (
+                    <TaskStatusControl event={event} action={action} />
+                  )}
                 </div>
               </CardContent>
             </Card>

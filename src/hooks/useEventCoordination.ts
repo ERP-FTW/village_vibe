@@ -1,7 +1,10 @@
 import { useNostrPublish } from './useNostrPublish';
+import { useCurrentUser } from './useCurrentUser';
 import { useNostr } from '@nostrify/react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useTribeName } from './useTribes';
+import { tribeModerators } from '@/lib/tribes';
+import { useCallback, useMemo } from 'react';
 import type { NostrEvent } from '@nostrify/nostrify';
 
 /**
@@ -65,6 +68,8 @@ const ALL_COORDINATION_KINDS = [
 
 export interface EventRole {
   id: string;
+  /** Nostr id of the definition event (for `e` reply references). */
+  nostrId: string;
   eventId: string;
   title: string;
   description: string;
@@ -146,6 +151,7 @@ export function useCreateRole() {
 export function useClaimRole() {
   const queryClient = useQueryClient();
   const { mutateAsync: publish } = useNostrPublish();
+  const { user } = useCurrentUser();
   return useMutation({
     mutationFn: async (data: {
       roleId: string;
@@ -155,8 +161,12 @@ export function useClaimRole() {
       eventAuthor: string;
       eventDTag: string;
       notes?: string;
+      /** 'withdrawn' replaces the user's claim with a withdrawal. */
+      status?: 'active' | 'withdrawn';
     }) => {
-      const claimId = `claim-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      if (!user) throw new Error('You must be logged in');
+      // One claim per person per role: republishing replaces it (claim, update or withdraw).
+      const claimId = `claim-${data.roleId}-${user.pubkey}`;
 
       const tags: string[][] = [
         ['d', claimId],
@@ -164,7 +174,7 @@ export function useClaimRole() {
         ['e', data.roleEventId, '', 'reply'],
         ['e', data.eventId, '', 'root'],
         ['role', data.roleId],
-        ['status', 'active'],
+        ['status', data.status ?? 'active'],
         ['alt', 'Event role claim'],
       ];
 
@@ -194,6 +204,8 @@ export function useClaimRole() {
 
 export interface EventItem {
   id: string;
+  /** Nostr id of the definition event (for `e` reply references). */
+  nostrId: string;
   eventId: string;
   title: string;
   description: string;
@@ -273,6 +285,7 @@ export function useCreateItem() {
 export function useClaimItem() {
   const queryClient = useQueryClient();
   const { mutateAsync: publish } = useNostrPublish();
+  const { user } = useCurrentUser();
   return useMutation({
     mutationFn: async (data: {
       itemId: string;
@@ -283,8 +296,12 @@ export function useClaimItem() {
       eventDTag: string;
       quantity: number;
       notes?: string;
+      /** 'withdrawn' replaces the user's claim with a withdrawal. */
+      status?: 'active' | 'withdrawn';
     }) => {
-      const claimId = `claim-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      if (!user) throw new Error('You must be logged in');
+      // One claim per person per item: republishing replaces it (claim, update or withdraw).
+      const claimId = `claim-${data.itemId}-${user.pubkey}`;
 
       const tags: string[][] = [
         ['d', claimId],
@@ -293,7 +310,7 @@ export function useClaimItem() {
         ['e', data.eventId, '', 'root'],
         ['item', data.itemId],
         ['quantity', data.quantity.toString()],
-        ['status', 'active'],
+        ['status', data.status ?? 'active'],
         ['alt', 'Event item claim'],
       ];
 
@@ -323,6 +340,8 @@ export function useClaimItem() {
 
 export interface EventAction {
   id: string;
+  /** Nostr id of the definition event (for `e` reply references). */
+  nostrId: string;
   eventId: string;
   title: string;
   description: string;
@@ -533,110 +552,130 @@ export interface EventCoordinationData {
   outcomes: EventOutcome[];
 }
 
+/** Parsed coordination records before trust filtering and counting. */
+interface RawCoordination {
+  roles: EventRole[];
+  roleClaims: RoleClaim[];
+  items: EventItem[];
+  itemClaims: ItemClaim[];
+  actions: EventAction[];
+  actionUpdates: ActionUpdate[];
+  outcomes: EventOutcome[];
+}
+
+/** Latest record per key (by timestamp). */
+function latestBy<T>(records: T[], key: (record: T) => string, time: (record: T) => number): T[] {
+  const latest = new Map<string, T>();
+  for (const record of records) {
+    const k = key(record);
+    const current = latest.get(k);
+    if (!current || time(record) > time(current)) latest.set(k, record);
+  }
+  return [...latest.values()];
+}
+
+/**
+ * Apply trust and counting rules (pure, used as the query's `select`):
+ * - roles, items, actions and outcomes count only when created by a trusted author
+ *   (the event organizer or a moderator of its tribe);
+ * - each person's latest claim per role/item wins (claims can be withdrawn), and
+ *   only claims on trusted roles/items count; fills count distinct people;
+ * - task status updates count only from trusted authors, the task's creator or
+ *   its assignee, newest first.
+ */
+export function deriveCoordination(raw: RawCoordination, trusted: ReadonlySet<string>): EventCoordinationData {
+  const roles = raw.roles.filter(r => trusted.has(r.createdBy));
+  const items = raw.items.filter(i => trusted.has(i.createdBy));
+  const actions = raw.actions.filter(a => trusted.has(a.createdBy));
+  const outcomes = raw.outcomes.filter(o => trusted.has(o.createdBy));
+
+  const roleIds = new Set(roles.map(r => r.id));
+  const itemIds = new Set(items.map(i => i.id));
+  const roleClaims = latestBy(raw.roleClaims.filter(c => roleIds.has(c.roleId)), c => `${c.roleId}:${c.claimedBy}`, c => c.claimedAt);
+  const itemClaims = latestBy(raw.itemClaims.filter(c => itemIds.has(c.itemId)), c => `${c.itemId}:${c.claimedBy}`, c => c.claimedAt);
+
+  const roleFilled = new Map<string, number>();
+  roleClaims.filter(c => c.status === 'active').forEach(c => roleFilled.set(c.roleId, (roleFilled.get(c.roleId) ?? 0) + 1));
+  const itemClaimed = new Map<string, number>();
+  itemClaims.filter(c => c.status === 'active' && c.quantity > 0)
+    .forEach(c => itemClaimed.set(c.itemId, (itemClaimed.get(c.itemId) ?? 0) + c.quantity));
+
+  const actionById = new Map(actions.map(a => [a.id, a]));
+  const actionUpdates = raw.actionUpdates.filter(u => {
+    const action = actionById.get(u.actionId);
+    return !!action && (trusted.has(u.updatedBy) || u.updatedBy === action.createdBy || u.updatedBy === action.assignedTo);
+  });
+  const latestStatus = new Map(latestBy(actionUpdates, u => u.actionId, u => u.updatedAt).map(u => [u.actionId, u.status]));
+
+  return {
+    roles: roles.map(r => ({ ...r, filled: roleFilled.get(r.id) ?? 0 })),
+    roleClaims,
+    items: items.map(i => ({ ...i, claimed: itemClaimed.get(i.id) ?? 0 })),
+    itemClaims,
+    actions: actions.map(a => ({ ...a, status: latestStatus.get(a.id) ?? a.status })),
+    actionUpdates,
+    outcomes,
+  };
+}
+
 /**
  * Fetch ALL coordination data for an event in a single relay request.
  *
  * Primary filter: stable `a` tag coordinate (survives event updates).
  * Fallback filter: `e` tag (for records written before the `a` tag was used).
  *
- * Returns raw parsed collections; callers build derived views from this data.
+ * Trust rules are applied in `select` (see deriveCoordination), so learning the tribe's
+ * moderators later re-derives the view without refetching.
  */
-export function useEventCoordinationData(event: NostrEvent): ReturnType<typeof useQuery<EventCoordinationData>> {
+export function useEventCoordinationData(event: NostrEvent): UseQueryResult<EventCoordinationData> {
   const { nostr } = useNostr();
+  const trusted = useCoordinationTrust(event);
 
   const dTag = event.tags.find(([n]) => n === 'd')?.[1] ?? '';
   const eventAddress = `${event.kind}:${event.pubkey}:${dTag}`;
 
+  const select = useCallback((raw: RawCoordination) => deriveCoordination(raw, trusted), [trusted]);
+
   return useQuery({
     queryKey: ['event-coordination', event.id, eventAddress],
-    queryFn: async (c) => {
-      const { signal } = c;
-
+    select,
+    queryFn: async (c): Promise<RawCoordination> => {
       const raw = await nostr.query(
         [
           // Primary: stable addressable coordinate (works across revisions)
-          {
-            kinds: ALL_COORDINATION_KINDS,
-            '#a': [eventAddress],
-            limit: 500,
-          },
+          { kinds: ALL_COORDINATION_KINDS, '#a': [eventAddress], limit: 500 },
           // Fallback: legacy records that only carried an `e` tag
-          {
-            kinds: ALL_COORDINATION_KINDS,
-            '#e': [event.id],
-            limit: 500,
-          },
+          { kinds: ALL_COORDINATION_KINDS, '#e': [event.id], limit: 500 },
         ],
-        { signal },
+        { signal: c.signal },
       );
 
-      // Deduplicate by event id
-      const seen = new Set<string>();
-      const events = raw.filter(e => {
-        if (seen.has(e.id)) return false;
-        seen.add(e.id);
-        return true;
-      });
-
-      const roleEvents     = events.filter(e => e.kind === COORDINATION_KINDS.ROLE);
-      const roleClaimEvents = events.filter(e => e.kind === COORDINATION_KINDS.ROLE_CLAIM);
-      const itemEvents     = events.filter(e => e.kind === COORDINATION_KINDS.ITEM);
-      const itemClaimEvents = events.filter(e => e.kind === COORDINATION_KINDS.ITEM_CLAIM);
-      const actionEvents   = events.filter(e => e.kind === COORDINATION_KINDS.ACTION);
-      const actionUpdateEvents = events.filter(e => e.kind === COORDINATION_KINDS.ACTION_UPDATE);
-      const outcomeEvents  = events.filter(e => e.kind === COORDINATION_KINDS.OUTCOME);
-
-      const roleClaims  = roleClaimEvents.map(parseRoleClaimEvent).filter((c): c is RoleClaim => c !== null);
-      const itemClaims  = itemClaimEvents.map(parseItemClaimEvent).filter((c): c is ItemClaim => c !== null);
-      const actionUpdates = actionUpdateEvents.map(parseActionUpdateEvent).filter((u): u is ActionUpdate => u !== null);
-
-      // Count active role claims per role
-      const roleFilled = new Map<string, number>();
-      roleClaims.filter(c => c.status === 'active').forEach(c => {
-        roleFilled.set(c.roleId, (roleFilled.get(c.roleId) ?? 0) + 1);
-      });
-
-      // Count active item claim quantities per item
-      const itemClaimed = new Map<string, number>();
-      itemClaims.filter(c => c.status === 'active').forEach(c => {
-        itemClaimed.set(c.itemId, (itemClaimed.get(c.itemId) ?? 0) + c.quantity);
-      });
-
-      // Apply latest action update status to each action
-      // Sort updates newest-first so the first match wins
-      const sortedUpdates = [...actionUpdates].sort((a, b) => b.updatedAt - a.updatedAt);
-      const latestActionStatus = new Map<string, ActionStatus>();
-      sortedUpdates.forEach(u => {
-        if (!latestActionStatus.has(u.actionId)) {
-          latestActionStatus.set(u.actionId, u.status);
-        }
-      });
-
-      const roles = roleEvents
-        .map(e => parseRoleEvent(e))
-        .filter((r): r is EventRole => r !== null)
-        .map(r => ({ ...r, filled: roleFilled.get(r.id) ?? 0 }));
-
-      const items = itemEvents
-        .map(e => parseItemEvent(e))
-        .filter((i): i is EventItem => i !== null)
-        .map(i => ({ ...i, claimed: itemClaimed.get(i.id) ?? 0 }));
-
-      const actions = actionEvents
-        .map(e => parseActionEvent(e))
-        .filter((a): a is EventAction => a !== null)
-        .map(a => ({
-          ...a,
-          status: latestActionStatus.get(a.id) ?? a.status,
-        }));
-
-      const outcomes = outcomeEvents
-        .map(e => parseOutcomeEvent(e))
-        .filter((o): o is EventOutcome => o !== null);
-
-      return { roles, roleClaims, items, itemClaims, actions, actionUpdates, outcomes };
+      const ofKind = (kind: number) => raw.filter(e => e.kind === kind);
+      return {
+        roles: ofKind(COORDINATION_KINDS.ROLE).map(parseRoleEvent).filter((r): r is EventRole => r !== null),
+        roleClaims: ofKind(COORDINATION_KINDS.ROLE_CLAIM).map(parseRoleClaimEvent).filter((x): x is RoleClaim => x !== null),
+        items: ofKind(COORDINATION_KINDS.ITEM).map(parseItemEvent).filter((i): i is EventItem => i !== null),
+        itemClaims: ofKind(COORDINATION_KINDS.ITEM_CLAIM).map(parseItemClaimEvent).filter((x): x is ItemClaim => x !== null),
+        actions: ofKind(COORDINATION_KINDS.ACTION).map(parseActionEvent).filter((a): a is EventAction => a !== null),
+        actionUpdates: ofKind(COORDINATION_KINDS.ACTION_UPDATE).map(parseActionUpdateEvent).filter((u): u is ActionUpdate => u !== null),
+        outcomes: ofKind(COORDINATION_KINDS.OUTCOME).map(parseOutcomeEvent).filter((o): o is EventOutcome => o !== null),
+      };
     },
   });
+}
+
+/**
+ * Authors trusted to define an event's roles, items, tasks and outcomes: the organizer
+ * and the moderators of the event's tribe.
+ */
+export function useCoordinationTrust(event: NostrEvent): ReadonlySet<string> {
+  const tribeTag = event.tags.find(([n]) => n === 'tribe')?.[1];
+  const { data: tribeInfo } = useTribeName(tribeTag, event.pubkey);
+  const moderatorsKey = tribeInfo ? tribeModerators(tribeInfo.tribe).sort().join(',') : '';
+  return useMemo(
+    () => new Set([event.pubkey, ...(moderatorsKey ? moderatorsKey.split(',') : [])]),
+    [event.pubkey, moderatorsKey],
+  );
 }
 
 // ============================================================================
@@ -753,6 +792,7 @@ function parseRoleEvent(event: NostrEvent): EventRole | null {
 
   return {
     id: dTag,
+    nostrId: event.id,
     eventId: eTag,
     title,
     description: event.content,
@@ -802,6 +842,7 @@ function parseItemEvent(event: NostrEvent): EventItem | null {
 
   return {
     id: dTag,
+    nostrId: event.id,
     eventId: eTag,
     title,
     description: event.content,
@@ -847,6 +888,7 @@ function parseActionEvent(event: NostrEvent): EventAction | null {
 
   return {
     id: dTag,
+    nostrId: event.id,
     eventId: eTag,
     title,
     description: event.content,

@@ -294,6 +294,13 @@ Addressable event recording event results and impact.
 
 **Content:** Outcome description or story
 
+### Coordination Trust Rules
+
+- Roles (38401), items (38403), actions (38405) and outcomes (38407) count only when authored by the event organizer or a moderator of the event's tribe.
+- Role and item claims (38402, 38404) use the d tag `claim-<role-or-item-id>-<claimer-pubkey>`, so each person has one claim per role or item. To withdraw, republish the claim with `["status", "withdrawn"]`.
+- Fills count distinct people with an active claim. Item totals sum each person's latest claim quantity.
+- An action update (38406) counts only when authored by the organizer, a tribe moderator, the action's creator or its assignee. The newest one wins.
+
 ## Implementation Notes
 
 1. **Privacy**: Location coordinates are rounded to 4 decimal places (~11m precision) for privacy

@@ -2,9 +2,11 @@
 
 Work in `ERP-FTW/village_vibe`, starting from the current `origin/almost`. The verified baseline is `51a6f054ea46a76f85baf551ca20eb1b9c894285`: PRs #3–#21 and #23–#28 are merged, #22 is closed, and the combined code passes type checking, lint, 95 tests in 18 files, and build. Fetch first and preserve newer work.
 
-Finish the remaining concrete functional gaps below so the app is ready for a live test. Implement the repairs; do not return another audit or implementation plan. Keep the work in five small PRs, using the existing components, hooks, protocols, and test setup. The first two are related; land the visibility behavior before exposing it in the form. Base independent PRs on `almost`, refresh overlaps, and test the final combination.
+Finish the remaining concrete functional gaps below so the app is ready for a live test. Implement the repairs; do not return another audit or implementation plan. Keep the work in four small PRs, using the existing components, hooks, protocols, and test setup. The first two are related; land the visibility behavior before exposing it in the form. Base independent PRs on `almost`, refresh overlaps, and test the final combination.
 
 The defaults below are intentional decisions for this round. Proceed without asking additional product-policy questions. If an unrelated ambiguity appears, finish the independent work and report that narrow issue once. Do not invent a new service, queue, encryption scheme, reputation system, or deployment framework.
+
+**Badges are on hold by the user's instruction.** Exclude badge issuance, badge validation/display changes, badge-based service filtering, and badge-related copy or tab cleanup from this round. Do not implement or rename the inert “Trusted only” service filter as part of this work. Record those known gaps as deferred; they do not block the event repairs or preparation for live testing. Preserve existing badge behavior.
 
 ## 1. Apply event visibility consistently inside the app
 
@@ -56,23 +58,13 @@ Refresh the displayed discussion only after relay acceptance. Failed posts/repli
 
 **Acceptance:** create a comment and reply through the rendered UI; reopen and see the same tree. Include a mixed legacy/NIP-22 fixture, an address-rooted reply with one parent `e`, nested replies, event replacement at the same address, malformed/duplicate relationships, and a failed publication. No duplicate top-level/reply rendering; no host-signed RSVP; no loss of legacy conversations.
 
-## 4. Fix the inert service filter and remaining badge promises
-
-**Confirmed gaps:** `ServiceFilters.tsx:134` exposes “Trusted only”, but `TribeServices.tsx:71–74` does nothing when it is selected; village services do not implement it either. `TribeView.tsx:251` says attendance earns badges, and `EventView.tsx:156` promises attendance badges after the event, although there is no issuer workflow.
-
-Use this bounded behavior: rename the filter to **Has badge awards** and actually filter both tribe and village service results using existing issuer-validated badge-award data. Explain that a badge is an issuer's claim, not Village Vibe's endorsement or proof of attendance. Reuse batched lookups; avoid restoring one relay request per card. Loading/error states must not silently show unfiltered results as though the filter succeeded, or mistake an outage for “no badges”. Clearing the filter must recover immediately. Keep search, category, distance and availability filters working together.
-
-Where badge chips are displayed, make the award/issuer inspectable and avoid unexplained “trusted” signals. Preserve the existing issuer validation; do not invent trusted issuers or a reputation score. Replace the two unsupported attendance-badge promises with accurate availability wording, or omit those empty feature tabs. Do not build automatic issuance in this round.
-
-**Acceptance:** a mixed service list changes in both views when the filter is toggled; mismatched-issuer awards are rejected; lookup failures are explicit; turning the filter off restores the list. No new per-card query explosion. No screen claims attending or scanning automatically earns a badge.
-
-## 5. Final functional verification and a clean handoff for live testing
+## 4. Final functional verification and a clean handoff for live testing
 
 Run a bounded walkthrough of the features touched and the established core: create tribe → join/approve → member story/service/event → RSVP/check-in → discussion/reply → service response → promotion/hide → DM failure/retry/history. Check both the actor and a second viewer with local fixtures. Confirm that each successful write has a reachable read/display path. Repair directly reproduced regressions in this scope in small commits; record unrelated enhancements without expanding the round.
 
 Build and check routes/assets at both `/` and `/village_vibe/`. Preserve the manual-only workflow, source-commit build info, and rollback instructions from #27. Do not reintroduce automatic deployment. Prepare the first test release for the GitHub Pages project path `/village_vibe/`; actual publication and any Pages-settings changes remain a later instruction. No live test messages, zaps, or production data are to be published in this coding round.
 
-Update `AUDIT.md`, `NIP.md`, `README.md`, and the prior handoff's status where needed so historical findings and completed rounds are not presented as current defects. State the current visibility behavior, comment compatibility, badge-filter meaning, and any live checks not run. Leave AI instruction-file consolidation and further bundle tuning out of this round.
+Update `AUDIT.md`, `NIP.md`, `README.md`, and the prior handoff's status where needed so historical findings and completed rounds are not presented as current defects. State the current visibility behavior, comment compatibility, badge work deferred by the user, and any live checks not run. Leave AI instruction-file consolidation and further bundle tuning out of this round.
 
 ## Execution, review, and stop condition
 
@@ -81,4 +73,4 @@ Update `AUDIT.md`, `NIP.md`, `README.md`, and the prior handoff's status where n
 - Request Codex review and fix valid findings, up to the established five review rounds per PR. Five rounds is a limit on review cycling, not permission to merge a known defect. Finish straightforward confirmed corrections; report any genuinely unresolved issue precisely.
 - Push the PRs and merge those that are clean, green, and conflict-free within this scope, using the current expected head. Re-check concurrent branch updates; do not overwrite another worker's work or merge a different head than the one checked. Keep changes independently reviewable.
 - If this environment cannot reach live relays, finish the code, deterministic tests, and local browser checks. Clearly separate unrun live interoperability checks from completed verification. Do not create infrastructure work or block unrelated repairs on relay access.
-- Finish with merged PR links, the final `almost` SHA, test/CI evidence, any remaining real defect, and the exact next manual-deployment inputs from `docs/RELEASE.md`. Do not deploy in this round. Stop once these five scopes are complete; do not start another speculative audit or feature backlog.
+- Finish with merged PR links, the final `almost` SHA, test/CI evidence, any remaining real defect, and the exact next manual-deployment inputs from `docs/RELEASE.md`. Identify badge gaps as explicitly deferred, not completed. Do not deploy in this round. Stop once these four scopes are complete; do not start another speculative audit or feature backlog.

@@ -26,11 +26,21 @@ function ConversationItem({ pubkey, lastMessageAt, isSelected, onClick }: Conver
 
   return (
     <Card
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
+      aria-label={`Conversation with ${displayName}`}
       className={cn(
-        "cursor-pointer transition-colors hover:bg-muted/50",
+        "cursor-pointer transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isSelected && "bg-muted border-primary"
       )}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       <CardContent className="p-4">
         <div className="flex items-center gap-3">

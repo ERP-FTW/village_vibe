@@ -1,6 +1,7 @@
 import { useNostr } from '@nostrify/react';
-import { useQuery } from '@tanstack/react-query';
-import { Navigate, Link } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthor } from '@/hooks/useAuthor';
 import { genUserName } from '@/lib/genUserName';
 import { addressRoute } from '@/lib/nostrRoutes';
@@ -51,6 +52,21 @@ export function EventPointerView({ id, relays }: { id: string; relays?: string[]
     },
   });
 
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const d = event?.tags.find(([name]) => name === 'd')?.[1];
+  const route = event && d !== undefined ? addressRoute(event.kind, event.pubkey, d) : null;
+
+  // App content: hand the record we already fetched (possibly from a hinted relay) to the
+  // destination page's cache, then redirect there.
+  useEffect(() => {
+    if (!event || !route || d === undefined) return;
+    const id = `${event.pubkey}:${d}`;
+    const key = event.kind === 34550 ? ['tribe', id] : event.kind === 30023 ? ['story', id] : ['event', id];
+    queryClient.setQueryData(key, event);
+    navigate(route, { replace: true });
+  }, [event, route, d, queryClient, navigate]);
+
   if (isLoading) {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-8">
@@ -66,9 +82,7 @@ export function EventPointerView({ id, relays }: { id: string; relays?: string[]
   }
 
   if (event) {
-    const d = event.tags.find(([name]) => name === 'd')?.[1];
-    const route = d !== undefined ? addressRoute(event.kind, event.pubkey, d) : null;
-    if (route) return <Navigate to={route} replace />;
+    if (route) return null;
     if (event.kind === 1) {
       return (
         <div className="container mx-auto max-w-2xl px-4 py-8">

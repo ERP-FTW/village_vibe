@@ -67,7 +67,6 @@ export function AttendeeCheckIn({ event, eventId }: AttendeeCheckInProps) {
       const scanner = new QrScanner(
         videoRef.current,
         (result) => {
-          console.log('QR Code detected:', result.data);
 
           // Show what was scanned in a popup first
           const scannedContent = result.data;
@@ -365,7 +364,6 @@ export function AttendeeCheckIn({ event, eventId }: AttendeeCheckInProps) {
 
                             // Try to scan the captured frame
                             const result = await QrScanner.scanImage(canvas);
-                            console.log('Manual scan result:', result);
 
                             // Process the result
                             const scannedContent = result;

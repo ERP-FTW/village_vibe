@@ -51,12 +51,6 @@ export function CreateRoleDialog({ event, open, onOpenChange }: CreateRoleDialog
       return;
     }
 
-    console.log('🎯 Creating role for event:', {
-      eventId: event.id,
-      eventKind: event.kind,
-      eventDTag,
-      title: formData.title.trim(),
-    });
 
     createRole({
       eventId: event.id,

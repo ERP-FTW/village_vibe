@@ -442,13 +442,13 @@ const VillagePage = () => {
         </div>
       </div>
 
-      {/* Debug Tool */}
-      <VillageDebugTool
+      {/* Debug Tool - development builds only */}
+      {import.meta.env.DEV && <VillageDebugTool
         currentVillage={currentVillage}
         villagesToQuery={villagesToQuery}
         preferences={preferences}
         usingAllVillages={villagesToQuery.length === 0}
-      />
+      />}
     </div>
   );
 }
@@ -540,7 +540,6 @@ function VillageDebugTool({
       };
 
       // 1. Query all content types (no filtering)
-      console.log('🔍 Testing queries: All stories, services, events');
       const [allStories, allServices, allEvents] = await Promise.all([
         nostr.query([{ kinds: [30023], limit: 100 }], { signal }),
         nostr.query([{ kinds: [38857, 30627], limit: 100 }], { signal }),
@@ -554,11 +553,9 @@ function VillageDebugTool({
         return acc;
       }, {} as Record<string, number>);
 
-      console.log('📊 Authors in results:', authorCounts);
 
       // 1b. Query specifically for the author from tribe debug
       const tribeAuthor = 'a847369f9ed651c1fba996f0e93d432b511edaece56cd88d9b94a8b5f7c7c5f5';
-      console.log('🔍 Testing query: Stories by tribe author');
       const authorStories = await nostr.query([{
         kinds: [30023],
         authors: [tribeAuthor],
@@ -609,7 +606,6 @@ function VillageDebugTool({
 
       // 2. Query with #village filter for current village
       const testVillage = villagesToQuery.length > 0 ? villagesToQuery[0] : 'mack-eastside';
-      console.log('🔍 Testing query: #village filter for', testVillage);
 
       const [villageStories, villageServices, villageEvents] = await Promise.all([
         nostr.query([{ kinds: [30023], '#village': [testVillage], limit: 100 }], { signal }),
@@ -651,7 +647,6 @@ function VillageDebugTool({
       };
 
       // 3. Query for promotion labels (kind 1985) - the fix mentioned this approach
-      console.log('🔍 Testing query: Promotion labels (kind 1985)');
       const promotionLabels = await nostr.query([{
         kinds: [1985],
         '#l': ['village-promoted'],
@@ -669,7 +664,6 @@ function VillageDebugTool({
       // 4. Query with specific village names
       const villageNames = ['mack-eastside', 'ferndale', 'bellingham', 'seattle'];
       for (const village of villageNames) {
-        console.log(`🔍 Testing query: #t ${village} filter`);
         const villageStories = await nostr.query([{
           kinds: [30023],
           '#t': [village],
@@ -726,7 +720,6 @@ function VillageDebugTool({
       };
 
       // 5. Test current useVillageStories hook behavior (simplified logic)
-      console.log('🔍 Testing simplified hook behavior simulation');
       const simulationVillage = 'main'; // Test with main village (shows all)
       const hookSimulation = allStories.filter(event => {
         // For main village page, show all village content

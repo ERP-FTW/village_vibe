@@ -726,18 +726,6 @@ export function useEventCoordinationSummary(event: NostrEvent) {
 // LEGACY SHIM HOOKS (thin wrappers over the batched query for tab components)
 // ============================================================================
 
-/** Used by EventRolesTab */
-export function useEventRoles(event: NostrEvent) {
-  const query = useEventCoordinationData(event);
-  return { ...query, data: query.data?.roles };
-}
-
-/** Used by EventItemsTab */
-export function useEventItems(event: NostrEvent) {
-  const query = useEventCoordinationData(event);
-  return { ...query, data: query.data?.items };
-}
-
 /** Used by EventActionsTab */
 export function useEventActions(event: NostrEvent) {
   const query = useEventCoordinationData(event);
@@ -917,16 +905,4 @@ function parseOutcomeEvent(event: NostrEvent): EventOutcome | null {
     createdAt: event.created_at,
     createdBy: event.pubkey,
   };
-}
-
-// Keep legacy exports that some components may reference by name
-// (these are now unused but prevent TS errors during migration)
-/** @deprecated Use useEventCoordinationData instead */
-export function useRoleClaims(_roleId: string, _eventId: string) {
-  return useQuery({ queryKey: ['role-claims-noop'], queryFn: () => [] as RoleClaim[], enabled: false });
-}
-
-/** @deprecated Use useEventCoordinationData instead */
-export function useItemClaims(_itemId: string, _eventId: string) {
-  return useQuery({ queryKey: ['item-claims-noop'], queryFn: () => [] as ItemClaim[], enabled: false });
 }

@@ -52,28 +52,6 @@ export function useEventDiscussion(event: NostrEvent, limit?: number) {
       // Query all types of discussions
       const allEvents = await nostr.query(filters, { signal });
 
-      console.log('Event Discussion Debug:', {
-        eventId: event.id.slice(0, 8),
-        eventKind: event.kind,
-        eventPubkey: event.pubkey.slice(0, 8),
-        eventCoord,
-        filters: filters.map(f => ({
-          kinds: f.kinds,
-          tags: Object.keys(f).filter(k => k.startsWith('#')).map(k => `${k}: ${f[k]}`)
-        })),
-        totalResults: allEvents.length,
-        resultsByKind: allEvents.reduce((acc, e) => {
-          acc[e.kind] = (acc[e.kind] || 0) + 1;
-          return acc;
-        }, {} as Record<number, number>),
-        sampleResults: allEvents.slice(0, 5).map(e => ({
-          id: e.id.slice(0, 8),
-          kind: e.kind,
-          author: e.pubkey.slice(0, 8),
-          content: e.content.slice(0, 50),
-          relevantTags: e.tags.filter(([name]) => ['e', 'a', 't', 'p'].includes(name))
-        }))
-      });
 
 
 
@@ -106,19 +84,6 @@ export function useEventDiscussion(event: NostrEvent, limit?: number) {
         return false;
       });
 
-      console.log('Top Level Comments Debug:', {
-        totalComments: topLevelComments.length,
-        comments: topLevelComments.map(c => ({
-          id: c.id.slice(0, 8),
-          kind: c.kind,
-          author: c.pubkey.slice(0, 8),
-          content: c.content.slice(0, 100),
-          eTag: getTagValue(c, 'e'),
-          aTag: getTagValue(c, 'a'),
-          matchesEventId: getTagValue(c, 'e') === event.id,
-          matchesEventCoord: getTagValue(c, 'a') === eventCoord
-        }))
-      });
 
 
 

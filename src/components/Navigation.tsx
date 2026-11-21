@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useRelayHealth } from "@/hooks/useRelayHealth";
@@ -10,7 +11,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuthor } from "@/hooks/useAuthor";
 import { genUserName } from "@/lib/genUserName";
-import { User, Settings, MessageCircle, Wifi, WifiOff } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { User, Settings, MessageCircle, Wifi, WifiOff, Menu } from "lucide-react";
 
 export function Navigation() {
   const location = useLocation();
@@ -23,6 +25,15 @@ export function Navigation() {
   const displayName = metadata?.name || metadata?.display_name || (user ? genUserName(user.pubkey) : '');
 
   const relayName = config.relayUrl.replace('wss://', '').replace('ws://', '').split('/')[0];
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const navLinks = [
+    { to: '/', label: 'Home', active: location.pathname === '/' },
+    { to: '/tribes', label: 'Tribes', active: location.pathname === '/tribes' },
+    { to: '/village', label: 'Village', active: location.pathname.startsWith('/village') },
+    ...(user ? [{ to: '/messages', label: 'Messages', active: location.pathname === '/messages' }] : []),
+    { to: '/about', label: 'About', active: location.pathname === '/about' },
+  ];
 
   return (
     <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -37,48 +48,17 @@ export function Navigation() {
 
           {/* Navigation Links */}
           <div className="hidden md:flex items-center gap-6">
-            <Link
-              to="/"
-              className={`text-sm font-medium transition-colors hover:text-primary ${
-                location.pathname === '/' ? 'text-foreground' : 'text-muted-foreground'
-              }`}
-            >
-              Home
-            </Link>
-            <Link
-              to="/tribes"
-              className={`text-sm font-medium transition-colors hover:text-primary ${
-                location.pathname === '/tribes' ? 'text-foreground' : 'text-muted-foreground'
-              }`}
-            >
-              Tribes
-            </Link>
-            <Link
-              to="/village"
-              className={`text-sm font-medium transition-colors hover:text-primary ${
-                location.pathname.startsWith('/village') ? 'text-foreground' : 'text-muted-foreground'
-              }`}
-            >
-              Village
-            </Link>
-            {user && (
+            {navLinks.map(link => (
               <Link
-                to="/messages"
+                key={link.to}
+                to={link.to}
                 className={`text-sm font-medium transition-colors hover:text-primary ${
-                  location.pathname === '/messages' ? 'text-foreground' : 'text-muted-foreground'
+                  link.active ? 'text-foreground' : 'text-muted-foreground'
                 }`}
               >
-                Messages
+                {link.label}
               </Link>
-            )}
-            <Link
-              to="/about"
-              className={`text-sm font-medium transition-colors hover:text-primary ${
-                location.pathname === '/about' ? 'text-foreground' : 'text-muted-foreground'
-              }`}
-            >
-              About
-            </Link>
+            ))}
 
             {/* Relay Status Indicator - Clickable to switch relays */}
             <DropdownMenu onOpenChange={open => { if (open && isStale) void checkRelay(); }}>
@@ -117,7 +97,39 @@ export function Navigation() {
           </div>
 
           {/* User Area */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
+            {/* Mobile menu: the desktop links above are hidden below md */}
+            <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72">
+                <SheetHeader>
+                  <SheetTitle>Village Vibe</SheetTitle>
+                </SheetHeader>
+                <nav className="mt-6 flex flex-col gap-1">
+                  {navLinks.map(link => (
+                    <Link
+                      key={link.to}
+                      to={link.to}
+                      onClick={() => setMenuOpen(false)}
+                      className={`rounded-md px-3 py-2 text-base font-medium hover:bg-muted ${
+                        link.active ? 'bg-muted text-foreground' : 'text-muted-foreground'
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </nav>
+                <div className="mt-6 space-y-2 border-t pt-4">
+                  <div className="text-xs font-semibold">Primary relay</div>
+                  <RelaySelector className="w-full" />
+                </div>
+              </SheetContent>
+            </Sheet>
+
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

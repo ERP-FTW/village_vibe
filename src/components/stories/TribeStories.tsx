@@ -105,7 +105,7 @@ export function TribeStories({
   return (
     <div className="space-y-6">
       {/* Debug component */}
-      <StoryDebug tribeId={tribeId} />
+      {import.meta.env.DEV && <StoryDebug tribeId={tribeId} />}
 
       {/* Header with search and create button */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between">

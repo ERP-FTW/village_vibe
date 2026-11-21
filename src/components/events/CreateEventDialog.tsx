@@ -416,15 +416,6 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    console.log('🚀 handleSubmit called - Form submission started');
-    console.log('👤 Current user:', user ? user.pubkey.slice(0, 8) : 'NO USER');
-    console.log('📝 Form data:', {
-      title: formData.title,
-      date: formData.date,
-      time: formData.time,
-      place: formData.place,
-      etypes: formData.etypes,
-    });
 
     if (!user) {
       toast({
@@ -538,14 +529,6 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
 
 
       // Log the event creation attempt
-      console.log('🎯 Creating enhanced event with data:', {
-        tribe: tribeSlug,
-        title: formData.title.trim(),
-        etypes: formData.etypes,
-        start: startTimestamp,
-        villages: formData.villages,
-        visibility: formData.visibility,
-      });
 
       // Create the enhanced event
       const result = await createEnhancedEvent({
@@ -566,16 +549,6 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
         privateDetails: formData.privateDetails.trim(),
         typeSpecificData,
       });
-      const published = result.eventData;
-      try {
-        sessionStorage.setItem('lastCreatedEvent', JSON.stringify({
-          eventId: published.id, eventKind: published.kind, pubkey: published.pubkey,
-          dTag: result.dTag, tribeTag: tribeSlug, title: formData.title.trim(),
-          timestamp: published.created_at, tags: published.tags,
-        }));
-      } catch {
-        // The relay already accepted the event even if browser storage is unavailable.
-      }
       let failed = 0;
       if (formData.visibility === 'private' && formData.sendDMs && formData.invitees.length) {
         failed = await sendPrivateDetails({

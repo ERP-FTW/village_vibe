@@ -65,6 +65,19 @@ export async function wrapDirectMessage(
   return { recipientWrap: giftWrap(recipientSeal, recipient), senderWrap: giftWrap(senderSeal, senderPubkey), rumor };
 }
 
+/** Structural check: a decrypted payload is only trusted once it has a rumor's shape. */
+function isRumor(value: unknown): value is Rumor {
+  if (!value || typeof value !== 'object') return false;
+  const r = value as Record<string, unknown>;
+  return typeof r.id === 'string'
+    && typeof r.pubkey === 'string' && /^[0-9a-f]{64}$/.test(r.pubkey)
+    && typeof r.created_at === 'number' && Number.isFinite(r.created_at)
+    && typeof r.kind === 'number'
+    && typeof r.content === 'string'
+    && Array.isArray(r.tags)
+    && r.tags.every(tag => Array.isArray(tag) && tag.every(part => typeof part === 'string'));
+}
+
 /**
  * Open a gift wrap addressed to the signer. Returns null for anything that is not a valid
  * kind 14 message: bad signatures, a rumor whose author differs from the seal's signer
@@ -74,10 +87,24 @@ export async function unwrapDirectMessage(signer: Nip44Signer, wrap: NostrEvent)
   try {
     const seal = JSON.parse(await signer.nip44.decrypt(wrap.pubkey, wrap.content)) as NostrEvent;
     if (seal.kind !== 13 || !verifyEvent(seal)) return null;
-    const rumor = JSON.parse(await signer.nip44.decrypt(seal.pubkey, seal.content)) as Rumor;
-    if (rumor.kind !== 14 || rumor.pubkey !== seal.pubkey || typeof rumor.content !== 'string') return null;
+    const rumor: unknown = JSON.parse(await signer.nip44.decrypt(seal.pubkey, seal.content));
+    if (!isRumor(rumor) || rumor.kind !== 14 || rumor.pubkey !== seal.pubkey) return null;
     return rumor;
   } catch {
     return null;
   }
+}
+
+/** NIP-17 inbox relays (kind 10050 `relay` tags) per pubkey. */
+export function inboxRelaysFrom(lists: NostrEvent[]): Map<string, string[]> {
+  const newest = new Map<string, NostrEvent>();
+  for (const list of lists) {
+    if (list.kind !== 10050) continue;
+    const current = newest.get(list.pubkey);
+    if (!current || list.created_at > current.created_at) newest.set(list.pubkey, list);
+  }
+  return new Map([...newest].map(([pubkey, list]) => [
+    pubkey,
+    [...new Set(list.tags.filter(([name, url]) => name === 'relay' && url?.startsWith('wss://')).map(([, url]) => url))].slice(0, 5),
+  ]));
 }

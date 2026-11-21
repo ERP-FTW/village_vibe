@@ -2,7 +2,9 @@ import type { NostrEvent } from '@nostrify/nostrify';
 import { useNostr } from '@nostrify/react';
 import { useQuery } from '@tanstack/react-query';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { supportsNip17, unwrapDirectMessage, type Rumor } from '@/lib/nip17';
+import { inboxRelaysFrom, supportsNip17, unwrapDirectMessage, type Rumor } from '@/lib/nip17';
+import { readRelayUrls } from '@/lib/RelayPool';
+import { useAppContext } from '@/hooks/useAppContext';
 
 export interface DecryptedMessage {
   id: string;
@@ -28,15 +30,24 @@ const rumorCache = new Map<string, Rumor | null>();
 export function useGiftWrappedInbox() {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+  const { config, presetRelays } = useAppContext();
   const signer = user?.signer;
 
   return useQuery({
-    queryKey: ['nip17-inbox', user?.pubkey],
+    queryKey: ['nip17-inbox', user?.pubkey, config.relayUrl],
     enabled: !!user && supportsNip17(signer),
     refetchInterval: 15000,
     queryFn: async ({ signal }): Promise<Rumor[]> => {
       if (!user || !supportsNip17(signer)) return [];
-      const wraps = await nostr.query([{ kinds: [1059], '#p': [user.pubkey], limit: 300 }], { signal });
+      // Messages are delivered to the user's advertised inbox relays (kind 10050) when they
+      // have any, so read those in addition to the app's relays.
+      const lists = await nostr.query([{ kinds: [10050], authors: [user.pubkey], limit: 1 }], { signal })
+        .catch(() => [] as NostrEvent[]);
+      const relays = [...new Set([
+        ...(inboxRelaysFrom(lists).get(user.pubkey) ?? []),
+        ...readRelayUrls(config.relayUrl, presetRelays),
+      ])];
+      const wraps = await nostr.query([{ kinds: [1059], '#p': [user.pubkey], limit: 300 }], { signal, relays });
       const rumors = await Promise.all(wraps.map(async (wrap) => {
         const key = `${user.pubkey}:${wrap.id}`;
         if (rumorCache.has(key)) return rumorCache.get(key) ?? null;

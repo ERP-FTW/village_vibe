@@ -7,7 +7,8 @@ import type { NostrEvent } from '@nostrify/nostrify';
 import { useVillagePreferences } from './useVillagePreferences';
 import { useCurrentUser } from './useCurrentUser';
 import { tribeQueryOptions } from './useTribes';
-import { MAX_FEED_AUTHORS, tribeEventAuthors } from '@/lib/tribes';
+import { MAX_FEED_AUTHORS, tribeEventAuthors, tribeModerators } from '@/lib/tribes';
+import { tribeHiddenLabelsFilter, withoutHidden } from '@/lib/moderation';
 
 // Event types for multi-type support (whitelisted values)
 export const EVENT_TYPES = [
@@ -71,10 +72,12 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
       const tribe = await queryClient.ensureQueryData(tribeQueryOptions(nostr, tribeId));
       const authors = tribe ? tribeEventAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
 
-      const records = await nostr.query([
+      const moderators = tribe ? tribeModerators(tribe) : [pubkey];
+      const records = withoutHidden(await nostr.query([
         { kinds: [36959], authors, limit: filters.limit || 100 },
         { kinds: [31923], authors, limit: 100 },
-      ], { signal });
+        tribeHiddenLabelsFilter(moderators),
+      ], { signal }), moderators);
       let validEvents = records.filter(event => event.tags.some(([name, value]) =>
         (name === 'tribe' && (value === dTag || value === tribeId)) ||
         (event.kind === 31923 && name === 'a' && value === `34550:${tribeId}`)

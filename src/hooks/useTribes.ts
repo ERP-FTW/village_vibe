@@ -53,7 +53,7 @@ export function usePublicTribes() {
         }
       ], { signal });
 
-      // Private tribes are only discoverable by their members.
+      // Unlisted tribes (legacy `private` flag) are left out of discovery; they remain public on relays.
       return events.filter(event => validateTribeEvent(event) && !event.tags.some(([name]) => name === 'private'));
     },
   });

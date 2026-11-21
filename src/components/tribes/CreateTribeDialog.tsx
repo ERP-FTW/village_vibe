@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/useToast";
 import { Upload, Loader2 } from "lucide-react";
+import { newTribeTags } from "@/lib/tribes";
+import { TribeAccessSettings } from "./TribeAccessSettings";
 
 interface CreateTribeDialogProps {
   children: React.ReactNode;
@@ -58,39 +59,16 @@ export function CreateTribeDialog({ children }: CreateTribeDialogProps) {
       // Generate a unique identifier for the tribe
       const dTag = `tribe-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
-      const tags = [
-        ['d', dTag],
-        ['name', formData.name.trim()],
-        ['t', 'tribe'], // Tag for tribe discovery
-      ];
-
-      if (formData.description.trim()) {
-        tags.push(['description', formData.description.trim()]);
-      }
-
-      if (formData.location.trim()) {
-        tags.push(['location', formData.location.trim()]);
-      }
-
-      if (formData.image.trim()) {
-        tags.push(['image', formData.image.trim()]);
-      }
-
-      // Add creator as admin
-      tags.push(['p', user.pubkey, '', 'admin']);
-
-      // Add visibility and access tags
-      if (formData.isPublic) {
-        tags.push(['public']);
-      } else {
-        tags.push(['private']);
-      }
-
-      if (formData.isOpen) {
-        tags.push(['open']);
-      } else {
-        tags.push(['closed']);
-      }
+      const tags = newTribeTags({
+        dTag,
+        creator: user.pubkey,
+        name: formData.name.trim(),
+        description: formData.description.trim() || undefined,
+        location: formData.location.trim() || undefined,
+        image: formData.image.trim() || undefined,
+        listed: formData.isPublic,
+        open: formData.isOpen,
+      });
 
       await createEvent({
         kind: 34550, // Community Definition (NIP-72)
@@ -230,33 +208,12 @@ export function CreateTribeDialog({ children }: CreateTribeDialogProps) {
           </div>
 
           {/* Settings */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Public Tribe</Label>
-                <p className="text-xs text-muted-foreground">
-                  Anyone can see and read this tribe
-                </p>
-              </div>
-              <Switch
-                checked={formData.isPublic}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isPublic: checked }))}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Open Membership</Label>
-                <p className="text-xs text-muted-foreground">
-                  Anyone can join without approval
-                </p>
-              </div>
-              <Switch
-                checked={formData.isOpen}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isOpen: checked }))}
-              />
-            </div>
-          </div>
+          <TribeAccessSettings
+            listed={formData.isPublic}
+            open={formData.isOpen}
+            onListedChange={(checked) => setFormData(prev => ({ ...prev, isPublic: checked }))}
+            onOpenChange={(checked) => setFormData(prev => ({ ...prev, isOpen: checked }))}
+          />
 
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">

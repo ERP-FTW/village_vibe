@@ -103,7 +103,7 @@ Villages aggregate content using the `village` tag:
 
 ## Enhanced Events (Custom Kind 36959)
 
-Village Vibe uses **kind 36959** (addressable events) for enhanced community events with multi-type support and private event capabilities.
+Village Vibe uses **kind 36959** (addressable events) for enhanced community events with multi-type support and invitations. Every tag and the content are public, whatever the event's visibility setting.
 
 ### Required Tags
 
@@ -144,8 +144,8 @@ Events can carry multiple types stored and indexed via tags. Whitelisted values:
 - `["end", "<unix-timestamp>"]` - Event end time
 - `["summary", "<brief-description>"]` - Brief description for preview cards
 - `["village", "<village-slug>"]` - Added when event is promoted to village
-- `["visibility", "public|tribe-only|private"]` - Event visibility level
-- `["p", "<invitee-pubkey>"]` - Invitees for private events (repeated)
+- `["visibility", "public|tribe-only|private"]` - Display and invitation hint for apps (not access control; see Restricted events)
+- `["p", "<invitee-pubkey>"]` - Invitees of invite-only events (repeated; the invitee list is public)
 - `["alt", "Community event for local participation"]` - NIP-31 alternative description
 
 ### Type-Specific Enhancement Tags
@@ -173,14 +173,16 @@ Events can carry multiple types stored and indexed via tags. Whitelisted values:
 
 Events use a short description (≤500 chars) in the `content` field. Longer details should be in linked NIP-23 stories or sent via DMs for private events.
 
-## Private Events
+## Restricted Events (visibility)
 
-Private events use the same kind 36959 but with specific handling:
+`tribe-only` and `private` (invite-only) events use the same kind 36959. The visibility value is a display and invitation rule for apps, not confidentiality:
 
-1. **Event Shell**: Published with minimal public info and `["visibility", "private"]`
-2. **Invitee List**: Include `["p", "<invitee-pubkey>"]` tags for each invitee
-3. **Private Details**: Full details (exact address, instructions) sent via NIP-04 DMs to invitees
-4. **Visibility**: Only visible to organizer, invitees, and tribe admins
+1. **Everything published is public.** Title, summary, content, times, place, geohash, image, event types and their details, tribe and village tags, the visibility value and the invitee `p` tags can be read by anyone on the relays, including people using other Nostr clients. Apps may choose not to list a restricted event, but they cannot hide it.
+2. **Invitee list:** `["p", "<invitee-pubkey>"]` for each invitee. This list is public.
+3. **Private details:** an exact address, entry instructions and anything confidential go only in encrypted direct messages to each invitee (NIP-17 gift wraps; NIP-04 for signers without NIP-44). They must never appear in the event's content or tags.
+4. **Write the public fields accordingly:** use a general place (e.g. "near the library") and keep confidential information in the message.
+
+Village Vibe's event form currently publishes public events only; the hook supports the restricted flow for future use.
 
 ## Event Moderation (NIP-32 Labels)
 
@@ -191,7 +193,7 @@ Enhanced events use **kind 1985** labels for moderation:
 - `["l", "tribe-hidden", "moderation"]` - Event hidden from tribe feed
 - `["l", "village-promoted", "promotion"]` - Event promoted to village
 - `["l", "village-featured", "promotion"]` - Event featured in village hero section
-- `["l", "private-meta", "moderation"]` - Marks private event metadata for filtering
+- `["l", "private-meta", "moderation"]` - Reserved; Village Vibe neither writes nor reads it
 
 ### Required Tags for Event Labels
 
@@ -361,7 +363,7 @@ Addressable event recording event results and impact.
 3. **Promotion**: Events start in tribes and can be promoted to villages by tribe admins
 4. **Editability**: Events use parameterized replaceable events for editing capability
 5. **Multi-Type**: Events can have multiple `etype` tags for combined event types
-6. **Private Events**: Use DMs for sensitive details, event shell remains public with minimal info
+6. **Restricted Events**: Visibility is an app display rule; the whole event stays public. Sensitive details go only in encrypted DMs
 7. **Interoperability**: Based on existing NIPs (52, 23, 32, 04) for maximum compatibility
 8. **Coordination**: Roles, Items, Actions, and Outcomes use addressable events (kinds 38401-38407)
 9. **External References**: All coordination objects support `external_ref` tags for linking with external systems (Cooking with Grace, etc.)
@@ -399,7 +401,9 @@ Addressable event recording event results and impact.
 }
 ```
 
-## Example Private Event
+## Example Invite-Only Event
+
+Everything below is public. The exact address and instructions were sent to the invitees in encrypted messages.
 
 ```json
 {
@@ -473,7 +477,7 @@ Tribes are NIP-72 community definitions. Only the creator's key can replace the 
 | `["d", "<id>"]` | Identifier; the tribe id used in URLs is `<creator-pubkey>:<d>` |
 | `["name", …]`, `["description", …]`, `["image", …]`, `["location", …]` | Display fields |
 | `["t", "tribe"]` | Discovery tag |
-| `["public"]` / `["private"]` | Listed in discovery, or only shown to members |
+| `["public"]` / `["private"]` | Listed or unlisted. Unlisted tribes are left out of discovery lists and non-members' profile views; the definition, member list and every other tag stay public |
 | `["open"]` / `["closed"]` | Informational; joining always goes through a request |
 | `["p", "<pubkey>", "<relay>", "<role>"]` | Member, one tag per member. Role is `admin`, `moderator`, `event_creator` or `member`. The creator is always treated as an admin. |
 | `["village", "<slug>"]` | Villages the tribe is associated with (see village feed rules) |

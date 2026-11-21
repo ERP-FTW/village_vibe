@@ -31,7 +31,7 @@ export function ProfileView({ pubkey }: ProfileViewProps) {
   const metadata = author.data?.metadata;
   // Only http(s) links: profile metadata is untrusted and could carry javascript: URLs.
   const websiteUrl = safeHttpUrl(metadata?.website);
-  // Private tribes are only listed for their own members.
+  // Unlisted tribes are only listed for their own members (their definition is still public).
   const userTribes = memberTribes?.filter(tribe =>
     !tribe.tags.some(([name]) => name === 'private') || (!!user && tribeMembers(tribe).has(user.pubkey)));
   const displayName = metadata?.name || metadata?.display_name || genUserName(pubkey);

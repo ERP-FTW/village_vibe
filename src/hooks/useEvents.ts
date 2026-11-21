@@ -358,92 +358,97 @@ export function usePromoteEventToVillages() {
   });
 }
 
+/**
+ * Everything an enhanced event publishes. All of it is public on Nostr: `visibility` and the
+ * invitee `p` tags are display and invitation hints for apps, not access control. Exact
+ * addresses and confidential instructions are not accepted here; they only travel in the
+ * encrypted invitation message (see `buildPrivateDetailsMessage`).
+ */
+export interface EnhancedEventInput {
+  tribe: string;
+  title: string;
+  summary?: string;
+  content: string;
+  start: number;
+  end?: number;
+  place: string;
+  lat?: number;
+  lon?: number;
+  image?: string; // Event image URL
+  etypes: EventType[];
+  visibility: EventVisibility;
+  villages?: string[];
+  invitees?: string[];
+  typeSpecificData?: Record<string, string | string[]>;
+  dTag?: string; // For updates
+}
+
+/** The unsigned kind 36959 event for `data` (pure; every field in it is public). */
+export function buildEnhancedEventTemplate(data: EnhancedEventInput, now = Math.floor(Date.now() / 1000)) {
+  // Generate a unique d tag if not provided (for updates)
+  const dTag = data.dTag || `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  // Build tags array
+  const tags: string[][] = [
+    ['d', dTag],
+    // Indexed tribe coordinate plus the legacy d-tag reference
+    ...tribeLinkTags(data.tribe),
+    ['title', data.title],
+    ...(data.summary ? [['summary', data.summary]] : []),
+    ['start', data.start.toString()],
+    ['place', data.place],
+    // Optional, coarse location (geohash cell of about 1 km)
+    ...locationTags(data.lat, data.lon),
+    ['visibility', data.visibility],
+    ['alt', 'Community event for local participation'],
+  ];
+
+  // Add image tag if provided
+  if (data.image) {
+    tags.push(['image', data.image]);
+  }
+
+  // Add end time if provided
+  if (data.end) {
+    tags.push(['end', data.end.toString()]);
+  }
+
+  // Add event types
+  data.etypes.forEach(etype => {
+    tags.push(['etype', etype]);
+  });
+
+  // Add village tags (legacy + indexed)
+  tags.splice(0, tags.length, ...withVillageTags(tags, data.villages ?? []));
+
+  // Invitees of invite-only events (public: anyone can read who was invited)
+  if (data.visibility === 'private' && data.invitees && data.invitees.length > 0) {
+    data.invitees.forEach(invitee => {
+      tags.push(['p', invitee]);
+    });
+  }
+
+  // Add type-specific tags
+  if (data.typeSpecificData) {
+    Object.entries(data.typeSpecificData).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach(v => tags.push([key, v]));
+      } else {
+        tags.push([key, value]);
+      }
+    });
+  }
+
+  return { dTag, template: { kind: 36959, content: data.content, tags, created_at: now } };
+}
+
 // Hook to create or update an enhanced event
 export function useCreateEnhancedEvent() {
   const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
-    mutationFn: async (data: {
-      tribe: string;
-      title: string;
-      summary?: string;
-      content: string;
-      start: number;
-      end?: number;
-      place: string;
-      lat?: number;
-      lon?: number;
-      image?: string; // Event image URL
-      etypes: EventType[];
-      visibility: EventVisibility;
-      villages?: string[];
-      invitees?: string[];
-      privateDetails?: string;
-      typeSpecificData?: Record<string, string | string[]>;
-      dTag?: string; // For updates
-    }) => {
-      // Generate a unique d tag if not provided (for updates)
-      const dTag = data.dTag || `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-      // Build tags array
-      const tags: string[][] = [
-        ['d', dTag],
-        // Indexed tribe coordinate plus the legacy d-tag reference
-        ...tribeLinkTags(data.tribe),
-        ['title', data.title],
-        ...(data.summary ? [['summary', data.summary]] : []),
-        ['start', data.start.toString()],
-        ['place', data.place],
-        // Optional, coarse location (geohash cell of about 1 km)
-        ...locationTags(data.lat, data.lon),
-        ['visibility', data.visibility],
-        ['alt', 'Community event for local participation'],
-      ];
-
-      // Add image tag if provided
-      if (data.image) {
-        tags.push(['image', data.image]);
-      }
-
-      // Add end time if provided
-      if (data.end) {
-        tags.push(['end', data.end.toString()]);
-      }
-
-      // Add event types
-      data.etypes.forEach(etype => {
-        tags.push(['etype', etype]);
-      });
-
-      // Add village tags (legacy + indexed)
-      tags.splice(0, tags.length, ...withVillageTags(tags, data.villages ?? []));
-
-      // Add invitees for private events
-      if (data.visibility === 'private' && data.invitees && data.invitees.length > 0) {
-        data.invitees.forEach(invitee => {
-          tags.push(['p', invitee]);
-        });
-      }
-
-      // Add type-specific tags
-      if (data.typeSpecificData) {
-        Object.entries(data.typeSpecificData).forEach(([key, value]) => {
-          if (Array.isArray(value)) {
-            value.forEach(v => tags.push([key, v]));
-          } else {
-            tags.push([key, value]);
-          }
-        });
-      }
-
-      // Create the event
-      const eventData = {
-        kind: 36959,
-        content: data.content,
-        tags,
-        created_at: Math.floor(Date.now() / 1000),
-      };
-
-      const published = await publish(eventData);
+    mutationFn: async (data: EnhancedEventInput) => {
+      const { dTag, template } = buildEnhancedEventTemplate(data);
+      const published = await publish(template);
       return {
         ...data,
         dTag,
@@ -452,6 +457,29 @@ export function useCreateEnhancedEvent() {
       };
     },
   });
+}
+
+/**
+ * The invitation sent to each invitee as an encrypted direct message. This is the only place
+ * private details and an exact location go; the published event never contains them.
+ */
+export function buildPrivateDetailsMessage(data: {
+  eventId: string;
+  eventTitle: string;
+  privateDetails: string;
+  exactLocation?: string;
+  organizer: string;
+}): string {
+  return `🔒 Private Event Details: ${data.eventTitle}
+
+${data.privateDetails}
+
+${data.exactLocation ? `📍 Exact Location: ${data.exactLocation}` : ''}
+
+Event ID: ${data.eventId}
+Organizer: ${data.organizer}
+
+The organizer shared these details with you in an encrypted message. The event listing itself is public; please don't repost these details.`;
 }
 
 // Hook to send private event details via DM
@@ -466,17 +494,7 @@ export function useSendPrivateEventDetails() {
       exactLocation?: string;
       organizer: string;
     }) => {
-      const dmContent = `🔒 Private Event Details: ${data.eventTitle}
-
-${data.privateDetails}
-
-${data.exactLocation ? `📍 Exact Location: ${data.exactLocation}` : ''}
-
-Event ID: ${data.eventId}
-Organizer: ${data.organizer}
-
-This is a private event. Please don't share these details publicly.`;
-
+      const dmContent = buildPrivateDetailsMessage(data);
       const sent = await Promise.allSettled([...new Set(data.invitees)].map(recipient =>
         send({ recipient, message: dmContent })
       ));

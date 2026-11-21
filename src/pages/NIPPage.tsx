@@ -85,10 +85,10 @@ export function NIPPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="text-sm">• Multi-type community events</div>
-            <div className="text-sm">• Private event coordination</div>
+            <div className="text-sm">• Event details shared by encrypted message</div>
             <div className="text-sm">• Village content aggregation</div>
             <div className="text-sm">• Story promotion system</div>
-            <div className="text-sm">• Location-based privacy</div>
+            <div className="text-sm">• Optional, coarse location</div>
             <div className="text-sm">• Tribe-to-village workflows</div>
             <p className="text-xs text-muted-foreground mt-4">
               Designed for local community building and coordination
@@ -110,8 +110,8 @@ export function NIPPage() {
             <div>
               <h4 className="font-medium mb-2">Privacy & Security</h4>
               <ul className="space-y-1 text-muted-foreground">
-                <li>• Coordinates rounded to ~11m precision</li>
-                <li>• Private event details via NIP-04 DMs</li>
+                <li>• Optional location as a ~0.5 mile geohash cell</li>
+                <li>• Event listings are public; invitation details go by NIP-17 (or NIP-04) message</li>
                 <li>• Additive, non-destructive moderation</li>
               </ul>
             </div>

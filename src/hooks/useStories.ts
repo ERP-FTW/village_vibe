@@ -8,7 +8,7 @@ import type { NostrEvent } from '@nostrify/nostrify';
 import { useVillagePreferences } from './useVillagePreferences';
 import { useTribe } from './useTribes';
 import { MAX_FEED_AUTHORS, tribeMemberAuthors, tribeModerators } from '@/lib/tribes';
-import { tribeHiddenLabelsFilter, withoutHidden } from '@/lib/moderation';
+import { dropHidden } from '@/lib/moderation';
 
 // Story filter options
 export interface StoryFilters {
@@ -50,13 +50,12 @@ export function useTribeStories(tribeId: string, filters: StoryFilters = {}) {
       const authors = tribe ? tribeMemberAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
       const moderators = tribe ? tribeModerators(tribe) : [pubkey];
       const allowed = new Set(tribe ? tribeMemberAuthors(tribe) : [pubkey]);
-      const records = withoutHidden(await nostr.query([
+      const records = await dropHidden(nostr, await nostr.query([
         // Indexed: stories tagged with the tribe coordinate
         { kinds: [30023], '#a': [tribeCoordinate(tribeId)], limit: 200 },
         // Legacy: stories from before the indexed tag, found through their authors
         { kinds: [30023], authors, limit: 200 },
-        tribeHiddenLabelsFilter(moderators),
-      ], { signal }), moderators);
+      ], { signal }), moderators, signal);
       const filteredEvents = records.filter(event =>
         allowed.has(event.pubkey) && belongsToTribe(event.tags, tribeId));
 

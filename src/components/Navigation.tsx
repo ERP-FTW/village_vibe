@@ -16,7 +16,7 @@ export function Navigation() {
   const location = useLocation();
   const { user } = useCurrentUser();
   const { config } = useAppContext();
-  const { data: relayHealth } = useRelayHealth();
+  const { data: relayHealth, isStale, refetch: checkRelay } = useRelayHealth();
   const author = useAuthor(user?.pubkey);
 
   const metadata = author.data?.metadata;
@@ -81,7 +81,7 @@ export function Navigation() {
             </Link>
 
             {/* Relay Status Indicator - Clickable to switch relays */}
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={open => { if (open && isStale) void checkRelay(); }}>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 gap-2 text-xs px-2">
                   {relayHealth?.status === 'connected' ? (
@@ -89,7 +89,7 @@ export function Navigation() {
                       <Wifi className="h-3 w-3 text-green-600" />
                       <span className="hidden lg:inline text-green-600">{relayName}</span>
                     </>
-                  ) : (
+                  ) : !relayHealth ? 'Checking relay…' : (
                     <>
                       <WifiOff className="h-3 w-3 text-red-600" />
                       <span className="hidden lg:inline text-red-600">Disconnected</span>
@@ -110,14 +110,7 @@ export function Navigation() {
                       {relayHealth.latency && <div>Latency: {relayHealth.latency}ms</div>}
                     </div>
                   )}
-                  <div className="text-[10px] text-muted-foreground space-y-1 pt-2 border-t">
-                    <div className="font-medium mb-1">Multi-Relay Queries (4 relays)</div>
-                    <div>• Primary: {relayName}</div>
-                    <div>• Backup: Ditto</div>
-                    <div>• Backup: Damus</div>
-                    <div>• Fallback: Primal or Nos</div>
-                    <div className="pt-1 italic">All queries have 10s timeout + 3 retries</div>
-                  </div>
+
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -55,7 +55,7 @@ export function EventView({ eventId }: EventViewProps) {
     );
   }
 
-  if (eventError || !event) {
+  if (!event) {
     return (
       <div className="max-w-2xl mx-auto">
         <Card className="border-dashed">
@@ -63,9 +63,9 @@ export function EventView({ eventId }: EventViewProps) {
             <div className="max-w-sm mx-auto space-y-6">
               <div className="text-4xl">🤷‍♂️</div>
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold">Event not found</h3>
+                <h3 className="text-lg font-semibold">{eventError ? 'Could not load event' : 'Event not found'}</h3>
                 <p className="text-muted-foreground">
-                  This event doesn't exist or isn't available on this relay
+                  {eventError ? "The relay lookup failed. Try switching relays." : "No matching event was found on the current relays."}
                 </p>
               </div>
               <RelaySelector className="w-full" />

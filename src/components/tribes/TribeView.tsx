@@ -24,7 +24,7 @@ interface TribeViewProps {
 export function TribeView({ tribeId }: TribeViewProps) {
   const { user } = useCurrentUser();
   const { data: tribe, isLoading: tribeLoading, error: tribeError, failureCount, refetch: refetchTribe, isFetching: tribeFetching } = useTribe(tribeId);
-  const { data: events, isLoading: eventsLoading, refetch: refetchEvents, isFetching: eventsFetching } = useTribeEvents(tribeId);
+  const { data: events, error: eventsError, isLoading: eventsLoading, refetch: refetchEvents, isFetching: eventsFetching } = useTribeEvents(tribeId);
 
   console.log('🔄 Tribe query status:', {
     tribeId,
@@ -50,31 +50,7 @@ export function TribeView({ tribeId }: TribeViewProps) {
                 <p className="text-muted-foreground text-sm">
                   Fetching tribe details from multiple relays...
                 </p>
-                {failureCount > 0 && (
-                  <div className="mt-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
-                    <p className="text-sm text-yellow-700 font-medium">
-                      Retrying... (attempt {failureCount + 1}/6)
-                    </p>
-                    <p className="text-xs text-yellow-600 mt-1">
-                      Querying 4 relays with 20s timeout per attempt
-                    </p>
-                    {failureCount >= 1 && (
-                      <p className="text-xs text-yellow-600 mt-1">
-                        ⏱️ Relays are slow - this is normal, please wait
-                      </p>
-                    )}
-                    {failureCount >= 3 && (
-                      <p className="text-xs text-yellow-600 mt-1 font-medium">
-                        💡 Try clicking Refresh or switching relays if this persists
-                      </p>
-                    )}
-                  </div>
-                )}
-                {!failureCount && (
-                  <p className="text-xs text-muted-foreground">
-                    Usually loads within 2-5 seconds
-                  </p>
-                )}
+                {failureCount > 0 && <p>Retrying the relay connection…</p>}
               </div>
             </div>
           </CardContent>
@@ -118,23 +94,11 @@ export function TribeView({ tribeId }: TribeViewProps) {
             <div className="max-w-sm mx-auto space-y-6">
               <div className="text-4xl">🤷‍♂️</div>
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold">Tribe not found</h3>
+                <h3 className="text-lg font-semibold">{tribeError ? 'Could not load tribe' : 'Tribe not found'}</h3>
                 <p className="text-muted-foreground">
-                  This tribe doesn't exist or isn't available on the current relays
+                  {tribeError ? "The relay lookup failed. Try again or switch relays." : "No matching tribe was found on the responding relays."}
                 </p>
-                {failureCount > 0 && (
-                  <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                    <p className="text-sm text-red-700 font-medium">
-                      Failed after {failureCount + 1} attempts across 4 relays
-                    </p>
-                    <p className="text-xs text-red-600 mt-1">
-                      The tribe definition (kind 34550) could not be retrieved
-                    </p>
-                    <p className="text-xs text-red-600 mt-1">
-                      Try clicking "Try Again" or switching to the Ditto relay
-                    </p>
-                  </div>
-                )}
+
               </div>
               <div className="space-y-3">
                 <Button onClick={() => refetchTribe()} variant="outline" className="w-full">
@@ -229,14 +193,14 @@ export function TribeView({ tribeId }: TribeViewProps) {
         </div>
 
         <TabsContent value="events">
-          <TribeEvents
+          {eventsError && !events ? <p role="alert">Could not load tribe events. Try refreshing.</p> : <TribeEvents
             events={events || []}
             isLoading={eventsLoading}
             canCreateEvents={canCreateEvents}
             tribeId={tribeId}
             isModerator={isModerator}
             villageSlug={tribe.tags.find(([name]) => name === 'village')?.[1]}
-          />
+          />}
         </TabsContent>
 
         <TabsContent value="stories">

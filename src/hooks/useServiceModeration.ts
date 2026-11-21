@@ -51,7 +51,7 @@ export function useServiceModerationLabels(serviceEvents: NostrEvent[]) {
     queryFn: async (c) => {
       if (serviceEvents.length === 0) return [];
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Query for moderation labels that reference these services
       const events = await nostr.query([

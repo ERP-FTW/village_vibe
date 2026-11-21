@@ -542,7 +542,7 @@ export function useEventCoordinationData(event: NostrEvent): ReturnType<typeof u
   return useQuery({
     queryKey: ['event-coordination', event.id, eventAddress],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(8000)]);
+      const { signal } = c;
 
       const raw = await nostr.query(
         [

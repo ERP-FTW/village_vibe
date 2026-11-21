@@ -51,7 +51,7 @@ export function DebugEventsDialog({ tribeId, children }: DebugEventsDialogProps)
     queryKey: ['debug-events', tribeId, isOpen],
     enabled: isOpen,
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Check for last created event in sessionStorage
       const lastCreatedEventStr = sessionStorage.getItem('lastCreatedEvent');

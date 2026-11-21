@@ -49,7 +49,7 @@ export function DebugCoordinationDialog({ event, children }: DebugCoordinationDi
     queryKey: ['debug-coordination', event.id, isOpen],
     enabled: isOpen,
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
       const results = {
         timestamp: new Date().toISOString(),
         eventId: event.id,
@@ -147,7 +147,7 @@ export function DebugCoordinationDialog({ event, children }: DebugCoordinationDi
     });
   };
 
-  const totalObjects = debugData?.queries.reduce((sum: number, q) => 
+  const totalObjects = debugData?.queries.reduce((sum: number, q) =>
     sum + (q.count || 0), 0) || 0;
 
   return (

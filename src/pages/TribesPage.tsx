@@ -8,7 +8,7 @@ import { RelaySelector } from "@/components/RelaySelector";
 import { Users } from "lucide-react";
 
 const TribesPage = () => {
-  const { data: publicTribes, isLoading: publicTribesLoading } = usePublicTribes();
+  const { data: publicTribes, isLoading: publicTribesLoading, error } = usePublicTribes();
 
   const { user } = useCurrentUser();
   const tribeIds = publicTribes?.map(tribe => `${tribe.pubkey}:${tribe.tags.find(([name]) => name === "d")?.[1]}`) ?? [];
@@ -79,7 +79,7 @@ const TribesPage = () => {
               <div className="max-w-sm mx-auto space-y-6">
                 <div className="text-4xl">🔍</div>
                 <div className="space-y-2">
-                  <h3 className="text-lg font-semibold">No public tribes found</h3>
+                  <h3 className="text-lg font-semibold">{error ? 'Could not load public tribes' : 'No public tribes found'}</h3>
                   <p className="text-muted-foreground">
                     Try switching to a different relay to discover more communities
                   </p>

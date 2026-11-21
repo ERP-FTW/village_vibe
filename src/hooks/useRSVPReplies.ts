@@ -16,7 +16,7 @@ export function useRSVPReplies(eventPubkey: string, eventDTag: string) {
   const { data: replies } = useQuery({
     queryKey: ['rsvp-replies', eventPubkey, eventDTag],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Look for kind 1 notes that reference this event
       const events = await nostr.query([{
@@ -36,7 +36,7 @@ export function useRSVPReplies(eventPubkey: string, eventDTag: string) {
     queryFn: async (c) => {
       if (!replies || replies.length === 0) return [];
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Get replies to announcement notes
       const replyEvents = await nostr.query([{

@@ -1,3 +1,4 @@
+import { readVillageFeed } from '@/lib/villageFeed';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -49,13 +50,15 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
 
+  const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['tribe-events', tribeId, filters],
+    queryKey: ['tribe-events', tribeId, queryFilters, user?.pubkey],
+    select: (events: NostrEvent[]) => applyEventFilters(events, { search }),
     staleTime: 60000, // Cache for 1 minute
     retry: 3, // Retry 3 times on failure
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(10000)]); // 10s timeout
+      const { signal } = c;
 
       // Parse tribe coordinates
       const [pubkey, dTag] = tribeId.split(':');
@@ -66,70 +69,16 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
 
       console.log('🔍 Querying events for tribe:', { tribeId, pubkey, dTag });
 
-      let enhancedEvents: NostrEvent[] = [];
-      let legacyEvents: NostrEvent[] = [];
+      const records = await nostr.query([
+        { kinds: [36959], authors: [pubkey], limit: filters.limit || 100 },
+        { kinds: [31923], authors: [pubkey], limit: 100 },
+      ], { signal });
+      let validEvents = records.filter(event => event.tags.some(([name, value]) =>
+        (name === 'tribe' && (value === dTag || value === tribeId)) ||
+        (event.kind === 31923 && name === 'a' && value === `34550:${tribeId}`)
+      ) && (event.kind === 36959 ? validateEnhancedEvent(event) : validateCalendarEvent(event)));
 
-      // Query all enhanced events by author and filter client-side
-      // (Relay doesn't index custom tags like 'tribe')
-      try {
-        console.log('📡 Querying all events by tribe author:', pubkey.slice(0, 8));
-
-        // Use a smaller initial limit for faster loading, can be increased via filters
-        const queryLimit = filters.limit || 100;
-
-        const allEnhancedEvents = await nostr.query([
-          {
-            kinds: [36959], // Enhanced events
-            authors: [pubkey], // Query by tribe owner
-            limit: queryLimit,
-          }
-        ], { signal });
-        console.log('📦 All enhanced events by author:', allEnhancedEvents.length);
-
-        // Filter for events with matching tribe tag
-        enhancedEvents = allEnhancedEvents.filter(event => {
-          const tribeTags = event.tags.filter(([name]) => name === 'tribe');
-          return tribeTags.some(([, value]) => value === dTag || value === tribeId);
-        });
-        console.log('📦 Enhanced events matching tribe tag:', enhancedEvents.length);
-      } catch (err) {
-        console.log('⚠️ Enhanced events query failed:', err);
-      }
-
-      // Query legacy events by author (relays don't index #a tags reliably)
-      try {
-        const legacyEventsByAuthor = await nostr.query([
-          {
-            kinds: [31923], // Time-based calendar events (NIP-52)
-            authors: [pubkey],
-            limit: 100,
-          }
-        ], { signal });
-        console.log('📦 Legacy events (by author):', legacyEventsByAuthor.length);
-
-        // Filter for events that reference this tribe
-        legacyEvents = legacyEventsByAuthor.filter(event => {
-          // Check if event has any reference to the tribe
-          return event.tags.some(([name, value]) =>
-            (name === 'a' && value === `34550:${pubkey}:${dTag}`) ||
-            (name === 'tribe' && (value === dTag || value === tribeId))
-          );
-        });
-        console.log('📦 Legacy events (filtered for tribe):', legacyEvents.length);
-      } catch (err) {
-        console.log('⚠️ Legacy events query failed:', err);
-      }
-
-      // Combine and validate events
-      const allEvents = [...enhancedEvents, ...legacyEvents];
-      let validEvents = allEvents.filter(event =>
-        event.kind === 36959 ? validateEnhancedEvent(event) : validateCalendarEvent(event)
-      );
-
-      console.log('✅ Valid events:', validEvents.length);
-
-      // Apply filters
-      validEvents = applyEventFilters(validEvents, filters, user?.pubkey);
+      validEvents = applyEventFilters(validEvents, queryFilters, user?.pubkey);
 
       console.log('🎯 After filters:', validEvents.length);
 
@@ -150,7 +99,7 @@ export function useEvent(eventId: string) {
   return useQuery({
     queryKey: ['event', eventId],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Parse event coordinates (format: pubkey:d-identifier)
       const [pubkey, dTag] = eventId.split(':');
@@ -158,33 +107,10 @@ export function useEvent(eventId: string) {
         throw new Error('Invalid event ID format');
       }
 
-      // Try enhanced events first
-      let events = await nostr.query([
-        {
-          kinds: [36959],
-          authors: [pubkey],
-          '#d': [dTag],
-          limit: 1,
-        }
-      ], { signal });
-
-      let event = events[0];
-      if (event && validateEnhancedEvent(event)) {
-        return event;
-      }
-
-      // Fallback to legacy calendar events
-      events = await nostr.query([
-        {
-          kinds: [31923],
-          authors: [pubkey],
-          '#d': [dTag],
-          limit: 1,
-        }
-      ], { signal });
-
-      event = events[0];
-      return event && validateCalendarEvent(event) ? event : null;
+      const events = await nostr.query([36959, 31923].map(kind => ({
+        kinds: [kind], authors: [pubkey], '#d': [dTag], limit: 1,
+      })), { signal });
+      return events.find(validateEnhancedEvent) ?? events.find(validateCalendarEvent) ?? null;
     },
   });
 }
@@ -196,7 +122,7 @@ export function useEventRSVPs(eventId: string) {
   return useQuery({
     queryKey: ['event-rsvps', eventId],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(8000)]);
+      const { signal } = c;
 
       const [pubkey, dTag] = eventId.split(':');
       if (!pubkey || !dTag) return [];
@@ -231,7 +157,7 @@ export function useEventAttendance(eventId: string) {
   return useQuery({
     queryKey: ['event-attendance', eventId],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       const [pubkey, dTag] = eventId.split(':');
       if (!pubkey || !dTag) return [];
@@ -258,7 +184,7 @@ export function useUserRSVP(eventId: string, userPubkey?: string) {
     queryFn: async (c) => {
       if (!userPubkey) return null;
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(8000)]);
+      const { signal } = c;
 
       const [pubkey, dTag] = eventId.split(':');
       if (!pubkey || !dTag) return null;
@@ -292,120 +218,18 @@ export function useVillageEvents(villageSlug: string, filters: EventFilters = {}
   const { preferences } = useVillagePreferences();
   const { user } = useCurrentUser();
 
+  const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['village-events', villageSlug, filters],
+    queryKey: ['village-events', villageSlug, queryFilters, preferences.hiddenTribes, user?.pubkey],
+    select: (events: NostrEvent[]) => applyEventFilters(events, { search }),
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       console.log('🏘️ Querying village events for:', villageSlug);
 
-      let villageEvents: NostrEvent[] = [];
-
-      // Strategy 1: Try to query with village tag filter first (more efficient if relay supports it)
-      if (villageSlug !== 'main') {
-        try {
-          console.log('🔍 Trying relay-level village filter for events:', villageSlug);
-
-          // Query enhanced events
-          const enhancedEvents = await nostr.query([{
-            kinds: [36959], // Enhanced events
-            '#village': [villageSlug],
-            limit: filters.limit || 100,
-          }], { signal });
-
-          // Query legacy events for backward compatibility
-          const legacyEvents = await nostr.query([{
-            kinds: [31923], // Time-based calendar events (NIP-52)
-            '#village': [villageSlug],
-            limit: 50,
-          }], { signal });
-
-          villageEvents = [...enhancedEvents, ...legacyEvents];
-          console.log('📦 Found events via relay filter:', villageEvents.length);
-        } catch {
-          console.log('⚠️ Relay-level village filter failed, falling back to client-side filtering');
-        }
-      }
-
-      // Strategy 2: If relay filtering didn't work or for main village, use client-side filtering
-      if (villageEvents.length === 0 || villageSlug === 'main') {
-        console.log('🔍 Using client-side filtering for village events');
-
-        // Get all events and filter client-side
-        const enhancedEvents = await nostr.query([{
-          kinds: [36959], // Enhanced events
-          limit: filters.limit || 150,
-        }], { signal });
-
-        const legacyEvents = await nostr.query([{
-          kinds: [31923], // Time-based calendar events (NIP-52)
-          limit: 50,
-        }], { signal });
-
-        const allEvents = [...enhancedEvents, ...legacyEvents];
-        console.log('📦 Found all events for client-side filtering:', allEvents.length);
-
-        // Filter for events that have village tags
-        villageEvents = allEvents.filter(event => {
-          const villageTags = event.tags.filter(([name]) => name === 'village');
-
-          if (villageSlug === 'main') {
-            // For main village page, show all village content
-            return villageTags.length > 0;
-          } else {
-            // For specific village pages, filter by that village
-            return villageTags.some(([, value]) => value === villageSlug);
-          }
-        });
-
-        console.log('🏘️ Events with village tag (client-side):', villageEvents.length);
-      }
-
-      // Strategy 3: Also query for events with promotion labels and merge them
-      try {
-        console.log('🔍 Querying promotion labels for village events:', villageSlug);
-        const promotionLabels = await nostr.query([{
-          kinds: [1985], // Labels
-          '#l': ['village-promoted'],
-          limit: 100,
-        }], { signal });
-
-        console.log('📋 Found promotion labels:', promotionLabels.length);
-
-        // Extract event references from promotion labels
-        const promotedEventRefs = promotionLabels
-          .map(label => label.tags.find(([name]) => name === 'a')?.[1])
-          .filter((ref): ref is string => Boolean(ref))
-          .filter(ref => ref.startsWith('36959:') || ref.startsWith('31923:'));
-
-        if (promotedEventRefs.length > 0) {
-          console.log('📚 Found promoted event references:', promotedEventRefs.length);
-
-          // Query the actual promoted events
-          const promotedEvents = await nostr.query([{
-            kinds: [36959, 31923],
-            limit: 200,
-          }], { signal });
-
-          // Filter promoted events and merge with village events
-          const matchingPromotedEvents = promotedEvents.filter(event => {
-            const eventRef = `${event.kind}:${event.pubkey}:${event.tags.find(([name]) => name === 'd')?.[1]}`;
-            return promotedEventRefs.includes(eventRef);
-          });
-
-          console.log('✨ Found matching promoted events:', matchingPromotedEvents.length);
-
-          // Merge with existing village events (avoid duplicates)
-          const existingIds = new Set(villageEvents.map(e => e.id));
-          const newPromotedEvents = matchingPromotedEvents.filter(event => !existingIds.has(event.id));
-          villageEvents = [...villageEvents, ...newPromotedEvents];
-
-          console.log('🔄 Merged promoted events, total:', villageEvents.length);
-        }
-      } catch (err) {
-        console.log('⚠️ Failed to query promotion labels:', err);
-      }
+      const villageEvents = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
+        [{ kinds: [36959], limit: filters.limit || 150 }, { kinds: [31923], limit: 50 }], signal);
 
       // Validate events
       const validEvents = villageEvents.filter(event =>
@@ -413,8 +237,7 @@ export function useVillageEvents(villageSlug: string, filters: EventFilters = {}
       );
       console.log('✅ Valid village events after all strategies:', validEvents.length);
 
-      // Apply filters
-      let filteredEvents = applyEventFilters(validEvents, filters, user?.pubkey);
+      let filteredEvents = applyEventFilters(validEvents, queryFilters, user?.pubkey);
 
       // Filter out events from hidden tribes
       filteredEvents = filteredEvents.filter(event => {

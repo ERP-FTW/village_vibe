@@ -107,7 +107,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
   const { data: joinRequests, isLoading: requestsLoading, refetch } = useQuery({
     queryKey: ['join-requests', tribeId],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Get join requests and rejection events
       const [requests, rejections] = await Promise.all([

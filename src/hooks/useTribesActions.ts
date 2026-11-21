@@ -54,7 +54,7 @@ export function useJoinTribe() {
           '#p': [user.pubkey],
           limit: 5,
         }
-      ], { signal: AbortSignal.timeout(1500) });
+      ]);
 
       if (rejections.length > 0) {
         toast({
@@ -73,7 +73,7 @@ export function useJoinTribe() {
           authors: [user.pubkey],
           limit: 5,
         }
-      ], { signal: AbortSignal.timeout(1500) });
+      ]);
 
       if (existingRequests.length > 0) {
         toast({

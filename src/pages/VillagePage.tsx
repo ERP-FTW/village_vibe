@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
 import { useParams } from 'react-router-dom';
 import { useNostr } from '@nostrify/react';
-import { useVillageStories, useMultiVillageStories } from '@/hooks/useStories';
+import { useMultiVillageStories } from '@/hooks/useStories';
 import { useVillageServices } from '@/hooks/useServices';
 import { useVillageEvents } from '@/hooks/useEvents';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -63,27 +63,16 @@ const VillagePage = () => {
     }
   })();
 
-  // Always call both hooks, but use the appropriate one based on query type
-  const allVillageStories = useVillageStories('main', {
+  const { data: stories, isLoading: storiesLoading, error: storiesError } = useMultiVillageStories(villagesToQuery, {
     search: search.trim() || undefined,
     limit: 20,
   });
 
-  const specificVillageStories = useMultiVillageStories(villagesToQuery, {
-    search: search.trim() || undefined,
-    limit: 20,
-  });
-
-  // Choose which result to use
-  const { data: stories, isLoading: storiesLoading } = villagesToQuery.length === 0
-    ? allVillageStories
-    : specificVillageStories;
-
-  const { data: services, isLoading: servicesLoading } = useVillageServices(currentVillage, {
+  const { data: services, isLoading: servicesLoading, error: servicesError } = useVillageServices(currentVillage, {
     search: search.trim() || undefined,
   });
 
-  const { data: events, isLoading: eventsLoading } = useVillageEvents(currentVillage, {
+  const { data: events, isLoading: eventsLoading, error: eventsError } = useVillageEvents(currentVillage, {
     search: search.trim() || undefined,
   });
 
@@ -119,6 +108,9 @@ const VillagePage = () => {
     .slice(0, 6);
 
   const renderContent = (content: (NostrEvent & { type: 'story' | 'service' | 'event' })[]) => {
+    const errors: Record<string, Error | null> = { stories: storiesError, services: servicesError, events: eventsError };
+    const failed = activeTab === 'all' ? Object.values(errors).some(Boolean) : errors[activeTab];
+    if (failed && !content.length) return <p role="alert">Could not load village content from the relays. Try switching relays.</p>;
     if (content.length === 0) {
       return (
         <Card className="border-dashed">

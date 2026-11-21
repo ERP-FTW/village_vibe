@@ -150,6 +150,22 @@ describe('reading the inbox', () => {
   });
 });
 
+describe('paging past wraps already known from another relay', () => {
+  it('does not skip a readable wrap when a full page holds only known wraps', async () => {
+    // Relay B shares 300 wraps (timestamps 1000..701 before SINCE) with relay A and has one
+    // more at 701; the shared ones were already read from A.
+    const base = SINCE - 1000;
+    const shared = Array.from({ length: PAGE_SIZE }, (_, i) => wrap(`shared-${String(i).padStart(3, '0')}`, base - i));
+    const extra = wrap('z-only-on-b', base - (PAGE_SIZE - 1));
+    const { nostr } = fakeRelays({ B: [...shared, extra] });
+
+    const read = await readOlderWraps(nostr, ME, [{ relay: 'B', nextUntil: base }], ids(shared));
+    const more = await readOlderWraps(nostr, ME, read.cursors, ids(shared));
+    expect([...read.wraps, ...more.wraps].map(w => w.id)).toContain('z-only-on-b');
+    expect(more.cursors[0].gap).toBeUndefined();
+  });
+});
+
 describe('combining a refresh with older history read on request', () => {
   const done = { relay: 'A' };
   it('keeps a gap the latest refresh left, even if older history was read to the end before', () => {

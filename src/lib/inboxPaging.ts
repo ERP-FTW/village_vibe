@@ -49,9 +49,11 @@ interface PageResult {
 
 /**
  * One page, newest first, from `until` (inclusive) back to `since`. Paging is inclusive so
- * wraps sharing the boundary timestamp aren't skipped; repeats are dropped by id. If a page
- * brings nothing new, every wrap at the boundary second has been seen as far as the relay
- * will list them, so the cursor moves one second back and the skip is reported.
+ * wraps sharing the boundary timestamp aren't skipped; repeats are dropped by id. Only when
+ * a full page can't move the cursor back (every wrap in it is at the `until` second) does
+ * that second hold more wraps than the relay will list: then the cursor moves one second
+ * back and the skip is reported. Whether the wraps were already known (e.g. from another
+ * relay) doesn't matter.
  */
 async function readPage(
   nostr: InboxQueryable, pubkey: string, relay: string, seen: Set<string>,
@@ -66,7 +68,7 @@ async function readPage(
   fresh.forEach(wrap => seen.add(wrap.id));
   if (batch.length < PAGE_SIZE) return { fresh };
   const oldest = Math.min(...batch.map(wrap => wrap.created_at));
-  if (!fresh.length) return { fresh, nextUntil: oldest - 1, skippedTimestamp: true };
+  if (range.until !== undefined && oldest >= range.until) return { fresh, nextUntil: range.until - 1, skippedTimestamp: true };
   return { fresh, nextUntil: oldest };
 }
 

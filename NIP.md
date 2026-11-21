@@ -404,3 +404,42 @@ Addressable event recording event results and impact.
   "id": "..."
 }
 ```
+## Tribes (NIP-72 Communities, Kind 34550)
+
+Tribes are NIP-72 community definitions. Only the creator's key can replace the definition. Clients must refuse to publish one from another key: that would create a separate community under that key.
+
+| Tag | Meaning |
+|---|---|
+| `["d", "<id>"]` | Identifier; the tribe id used in URLs is `<creator-pubkey>:<d>` |
+| `["name", …]`, `["description", …]`, `["image", …]`, `["location", …]` | Display fields |
+| `["t", "tribe"]` | Discovery tag |
+| `["public"]` / `["private"]` | Listed in discovery, or only shown to members |
+| `["open"]` / `["closed"]` | Informational; joining always goes through a request |
+| `["p", "<pubkey>", "<relay>", "<role>"]` | Member, one tag per member. Role is `admin`, `moderator`, `event_creator` or `member`. The creator is always treated as an admin. |
+| `["village", "<slug>"]` | Villages the tribe is associated with (see village feed rules) |
+
+Before republishing, clients fetch the newest definition and write a `created_at` later than it, so concurrent changes don't overwrite each other.
+
+### Join Requests (Kind 9021) and Rejections (Kind 9022)
+
+- **Join request (9021):** published by the requester, with `["h", "<creator-pubkey>:<d>"]` and `["p", "<creator-pubkey>"]`. The creator approves by adding the requester's `p` tag to the tribe definition.
+- **Rejection (9022):** published by a tribe moderator, with `["h", …]`, `["p", "<requester>"]` and `["e", "<request-id>"]`. Only rejections from the tribe's admins and moderators count.
+
+Note that NIP-29 defines kind 9022 as a "leave request". Village Vibe's tribes are NIP-72 communities, not NIP-29 groups, so the two don't interact, but the kind number overlaps.
+
+## Event Check-ins (Kind 2073)
+
+Published by an attendee who entered the host's check-in code.
+
+| Tag | Meaning |
+|---|---|
+| `["a", "<event-kind>:<host-pubkey>:<d>"]` | The event (36959 or 31923) |
+| `["e", "<event-id>"]`, `["p", "<host-pubkey>"]` | Event revision and host |
+| `["nonce", "<13-digit code>"]` | Code shown by the host |
+| `["verified_at", "<unix>"]` | Time of check-in |
+
+Check-ins are self-reported. The code is generated in the host's client and not verified by anyone else, so clients label them as such.
+
+## Profile Privacy (Kind 30078, NIP-78)
+
+Addressable app data with `["d", "profile-privacy"]`. The content is JSON: `{"showBasicInfo": boolean, "showTribes": boolean, "showBadges": boolean}`. These settings only control what Village Vibe shows on its own profile page. Kind 0 metadata, badge awards and tribe membership remain public on Nostr.

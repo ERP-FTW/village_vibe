@@ -24,6 +24,27 @@ Events (36959, 31923), stories (30023) and services (38857, 30627) are linked to
 - Villages have no owners: any tribe creator can associate a tribe with a village. Readers can hide tribes from their village feed.
 - Content from before the indexed tags is found through its authors (tribe feeds) or the legacy `village` tag (village feeds).
 
+### Promotion and feature labels
+
+`village-promoted` and `village-featured` labels (kind 1985, `["L", "promotion"]`) reference the content with `["a", "<kind>:<pubkey>:<d>"]`. They name their villages in both forms: the legacy `["village", "<slug>"]` and, since the indexed tag model, `["t", "village"]` plus `["t", "village-<slug>"]`. Older labels carry only the legacy form.
+
+A village feed finds promotions in three ways:
+
+1. **Indexed:** `{"kinds": [1985], "#l": ["village-promoted", "village-featured"], "#t": ["village-<slug>", …]}`, for labels with village topics.
+2. **Legacy:** the same filter with `#village`, for older labels. It is sent in its own subscription, because some relays reject multi-letter tag filters.
+3. **Recent window:** the newest labels overall. This is a bounded fallback for older labels when the legacy filter isn't available (the all-villages feed, or a relay that rejects it).
+
+Each read is a window of 200 labels. When a source that decides completeness fills its window, the feed reports that older promotions may exist. "Look further back" then reads further windows, inclusive paging with de-duplication by id, up to 10. The feed never claims complete history from a fixed recent window. Labels found this way still only count when they come from a moderator of the content's tribe, as above.
+
+### Upgrading older content to the indexed tags
+
+Only an author can upgrade their own content. Moderators never re-sign it: a label references the address `kind:pubkey:d`, which stays the same when the author republishes. Village Vibe writes the indexed tags whenever an author republishes through the app, for example:
+
+- promoting their own story, event or service to a village (this republishes it with `["t", "village-<slug>"]` alongside `["village", …]`);
+- saving an edit (this writes `["a", "34550:…"]` alongside `["tribe", …]`).
+
+Other clients can upgrade content the same way, by republishing it under the same `d` tag with both tag forms. Until then, legacy content stays readable through the legacy filters and fallbacks above.
+
 ## Services (Custom Kinds 38857, 30627, 34871)
 
 ### Service Offers (38857) and Requests (30627)
@@ -95,7 +116,7 @@ Village Vibe uses **kind 1985** (Label from NIP-32) for story moderation with th
 
 ## Village Aggregation
 
-Villages aggregate content using the `village` tag:
+Villages aggregate content using the `village` tag (and the indexed `t` village topics; see Linking Content to Tribes and Villages):
 
 - **Stories**: `["village", "<village-slug>"]` tag added when promoted
 - **Services**: `["village", "<village-slug>"]` tag for village-wide services

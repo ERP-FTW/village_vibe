@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { useNostr } from '@nostrify/react';
 import { useMultiVillageStories } from '@/hooks/useStories';
 import { coordinateOf } from '@/lib/moderation';
+import { LABEL_WINDOW, MAX_PROMOTION_PAGES } from '@/lib/villageFeed';
 import { slugifyVillage, villageDisplayName } from '@/lib/villages';
 import { useVillageServices } from '@/hooks/useServices';
 import { useVillageEvents } from '@/hooks/useEvents';
@@ -63,17 +64,23 @@ const VillagePage = () => {
     return preferences.showAllVillages ? [] : preferences.selectedVillages;
   })();
 
+  // How many windows of promotion labels to read; raised by "Look further back"
+  const [promotionPages, setPromotionPages] = useState(1);
+
   const { data: storyFeed, isLoading: storiesLoading, error: storiesError } = useMultiVillageStories(villagesToQuery, {
     search: search.trim() || undefined,
     limit: 20,
+    promotionPages,
   });
 
   const { data: services, isLoading: servicesLoading, error: servicesError } = useVillageServices(villagesToQuery, {
     search: search.trim() || undefined,
+    promotionPages,
   });
 
   const { data: events, isLoading: eventsLoading, error: eventsError } = useVillageEvents(villagesToQuery, {
     search: search.trim() || undefined,
+    promotionPages,
   });
 
   const isLoading = storiesLoading || servicesLoading || eventsLoading;
@@ -221,6 +228,22 @@ const VillagePage = () => {
             }
           </p>
         </div>
+
+        {/* Promotion discovery reads bounded windows of labels: say when older ones may exist */}
+        {storyFeed && !storyFeed.promotionsComplete && (
+          <div role="status" className="rounded-md border border-dashed p-3 text-sm text-muted-foreground flex flex-wrap items-center gap-3">
+            <span>
+              Older promoted posts may not be shown: only the newest {promotionPages * LABEL_WINDOW} promotions were checked.
+            </span>
+            {promotionPages < MAX_PROMOTION_PAGES ? (
+              <Button size="sm" variant="outline" onClick={() => setPromotionPages(pages => Math.min(pages + 1, MAX_PROMOTION_PAGES))}>
+                Look further back
+              </Button>
+            ) : (
+              <span>That is as far back as this page reads.</span>
+            )}
+          </div>
+        )}
 
         {/* Featured stories hero section */}
         {featuredStories.length > 0 && (

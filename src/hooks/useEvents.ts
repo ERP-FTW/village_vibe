@@ -1,6 +1,7 @@
 import { useSendDirectMessage } from './useSendDirectMessage';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { locationTags } from '@/lib/location';
 import { villageList } from '@/lib/villages';
 import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { latestRSVPs } from '@/lib/rsvp';
@@ -368,8 +369,8 @@ export function useCreateEnhancedEvent() {
       start: number;
       end?: number;
       place: string;
-      lat: number;
-      lon: number;
+      lat?: number;
+      lon?: number;
       image?: string; // Event image URL
       etypes: EventType[];
       visibility: EventVisibility;
@@ -391,7 +392,8 @@ export function useCreateEnhancedEvent() {
         ...(data.summary ? [['summary', data.summary]] : []),
         ['start', data.start.toString()],
         ['place', data.place],
-        ['l', `${data.lat.toFixed(4)},${data.lon.toFixed(4)}`], // Round for privacy
+        // Optional, coarse location (geohash cell of about 1 km)
+        ...locationTags(data.lat, data.lon),
         ['visibility', data.visibility],
         ['alt', 'Community event for local participation'],
       ];
@@ -585,10 +587,9 @@ export function validateEnhancedEvent(event: NostrEvent): boolean {
   const titleTag = event.tags.find(([name]) => name === 'title')?.[1];
   const startTag = event.tags.find(([name]) => name === 'start')?.[1];
   const placeTag = event.tags.find(([name]) => name === 'place')?.[1];
-  const locationTag = event.tags.find(([name]) => name === 'l')?.[1];
 
-  // Required tags
-  if (!dTag || !tribeTag || !titleTag || !startTag || !placeTag || !locationTag) {
+  // Required tags (coordinates are optional)
+  if (!dTag || !tribeTag || !titleTag || !startTag || !placeTag) {
     return false;
   }
 
@@ -598,16 +599,6 @@ export function validateEnhancedEvent(event: NostrEvent): boolean {
     return false;
   }
 
-  // Validate location format (lat,lon)
-  const locationParts = locationTag.split(',');
-  if (locationParts.length !== 2) {
-    return false;
-  }
-
-  const [lat, lon] = locationParts.map(Number);
-  if (isNaN(lat) || isNaN(lon)) {
-    return false;
-  }
 
   // Validate event types (OPTIONAL for backward compatibility with old events)
   const etypeTags = event.tags.filter(([name]) => name === 'etype');

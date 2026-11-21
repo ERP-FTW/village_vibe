@@ -28,8 +28,6 @@ interface EventFormData {
   summary: string;
   description: string;
   place: string;
-  lat: number;
-  lon: number;
   image: string;
   date: string;
   time: string;
@@ -383,8 +381,6 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
     summary: '',
     description: '',
     place: '',
-    lat: 47.6062, // Default to Seattle
-    lon: -122.3321,
     image: '',
     date: '',
     time: '',
@@ -539,8 +535,6 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
         start: startTimestamp,
         end: endTimestamp,
         place: formData.place.trim(),
-        lat: formData.lat,
-        lon: formData.lon,
         image: formData.image || undefined, // Include uploaded image
         etypes: formData.etypes,
         visibility: formData.visibility,
@@ -568,8 +562,6 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
         summary: '',
         description: '',
         place: '',
-        lat: 47.6062,
-        lon: -122.3321,
         image: '',
         date: '',
         time: '',

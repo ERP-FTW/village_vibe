@@ -70,7 +70,7 @@ Village Vibe uses **kind 30023** (Long-form Content from NIP-23) for community s
 - `["cover", "<img-url>"]` - Cover image URL for story preview
 - `["village", "<village-slug>"]` - Added when story is promoted to village
 - `["place", "<location-name>"]` - Human-readable location name
-- `["l", "<lat>,<lon>"]` - Approximate coordinates (rounded for privacy)
+- `["g", "<geohash>"]` - Optional approximate location (6-character geohash, a cell of about 0.4 x 0.6 miles). Readers treat it as the whole cell, for example a distance filter matches when any part of the cell is in range. Older events used `["l", "<lat>,<lon>"]`, which clients still read; it collides with NIP-32 label tags, so new events no longer write it.
 - `["ref", "<event-id>"]` - Reference to related event (if story is about an event)
 - `["alt", "Community story shared with the village"]` - NIP-31 alternative description
 
@@ -112,7 +112,7 @@ Village Vibe uses **kind 36959** (addressable events) for enhanced community eve
 - `["title", "<event-title>"]` - Event title
 - `["start", "<unix-timestamp>"]` - Event start time (Unix timestamp)
 - `["place", "<location-name>"]` - Human-readable location name
-- `["l", "<lat>,<lon>"]` - Approximate coordinates (rounded for privacy)
+- `["g", "<geohash>"]` - Optional approximate location (6-character geohash, a cell of about 0.4 x 0.6 miles). Readers treat it as the whole cell, for example a distance filter matches when any part of the cell is in range. Older events used `["l", "<lat>,<lon>"]`, which clients still read; it collides with NIP-32 label tags, so new events no longer write it.
 
 ### Event Type Tags (Multi-select, Additive)
 
@@ -380,7 +380,7 @@ Addressable event recording event results and impact.
     ["start", "1704124800"],
     ["end", "1704135600"],
     ["place", "Community Center Garden"],
-    ["l", "40.7128,-74.0060"],
+    ["g", "dr5reg"],
     ["etype", "potluck"],
     ["etype", "cleanup"],
     ["food", "main"],
@@ -412,7 +412,7 @@ Addressable event recording event results and impact.
     ["title", "Private Tribe Gathering"],
     ["start", "1704124800"],
     ["place", "Private Location"],
-    ["l", "40.7100,-74.0050"],
+    ["g", "dr5reg"],
     ["etype", "meetup"],
     ["visibility", "private"],
     ["p", "abc123..."],
@@ -438,7 +438,7 @@ Addressable event recording event results and impact.
     ["summary", "Our tribe's garden project harvested 200+ pounds of vegetables for local families"],
     ["cover", "https://example.com/garden-photo.jpg"],
     ["place", "Community Center Garden"],
-    ["l", "40.7128,-74.0060"],
+    ["g", "dr5reg"],
     ["village", "brooklyn-heights"],
     ["alt", "Community story shared with the village"]
   ],

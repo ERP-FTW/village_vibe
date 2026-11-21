@@ -1,6 +1,7 @@
 import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { distanceMiles, locationTags, nearestDistanceMiles, readLocation, type LatLon } from '@/lib/location';
 import { villageList } from '@/lib/villages';
 import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { useNostr } from '@nostrify/react';
@@ -157,8 +158,8 @@ export function useCreateService() {
       tribe: string;
       category: ServiceCategory;
       content: string;
-      lat: number;
-      lon: number;
+      lat?: number;
+      lon?: number;
       area?: string;
       avail?: string;
       time?: string;
@@ -180,7 +181,8 @@ export function useCreateService() {
         // Indexed tribe coordinate plus the legacy d-tag reference
         ...tribeLinkTags(data.tribe),
         ['t', data.category],
-        ['l', `${data.lat.toFixed(4)},${data.lon.toFixed(4)}`], // Round for privacy
+        // Optional, coarse location (geohash cell of about 1 km)
+        ...locationTags(data.lat, data.lon),
         ['alt', `Service ${data.type} for local community help`],
       ];
 
@@ -461,10 +463,14 @@ export function validateServiceEvent(event: NostrEvent): boolean {
   const dTag = event.tags.find(([name]) => name === 'd')?.[1];
   const tribeTag = event.tags.find(([name]) => name === 'tribe')?.[1];
   const categoryTag = event.tags.find(([name]) => name === 't')?.[1];
-  const locationTag = event.tags.find(([name]) => name === 'l')?.[1];
 
-  // Required tags
-  if (!dTag || !tribeTag || !categoryTag || !locationTag) return false;
+  // Required tags (location is optional)
+  if (!dTag || !tribeTag || !categoryTag) return false;
+
+  // Location is optional, but a legacy coordinate tag (two elements, unlike NIP-32
+  // labels which carry a namespace) must parse as "lat,lon"
+  const legacyLocation = event.tags.find(tag => tag[0] === 'l' && tag.length === 2)?.[1];
+  if (legacyLocation !== undefined && !readLocation([['l', legacyLocation]])) return false;
 
   // Expired services (NIP-40 `expiration`, or the legacy `expires` tag) are no longer shown
   const expiresAt = Number(event.tags.find(([name]) => name === 'expiration' || name === 'expires')?.[1]);
@@ -472,13 +478,6 @@ export function validateServiceEvent(event: NostrEvent): boolean {
 
   // Validate category
   if (!SERVICE_CATEGORIES.includes(categoryTag as ServiceCategory)) return false;
-
-  // Validate location format (lat,lon)
-  const locationParts = locationTag.split(',');
-  if (locationParts.length !== 2) return false;
-
-  const [lat, lon] = locationParts.map(Number);
-  if (isNaN(lat) || isNaN(lon)) return false;
 
   // Validate content length
   if (event.content.length > 140) return false;
@@ -529,22 +528,27 @@ export function extractServiceData(event: NostrEvent) {
   };
 }
 
-// Helper function to calculate distance (simplified)
-export function calculateDistance(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const R = 3959; // Earth's radius in miles
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+/** Great-circle distance in miles. */
+export const calculateDistance = distanceMiles;
+
+/** The radius a service distance filter allows, in miles; undefined for "any distance". */
+export function distanceFilterMiles(distance?: string): number | undefined {
+  if (!distance) return undefined;
+  return distance === '3blocks' ? 0.1 : distance === '0.5mi' ? 0.5 : 1;
+}
+
+/**
+ * Services that could be within the filter's radius of the reader. A service's published
+ * location is approximate (a geohash cell), so it matches when any part of its cell is in
+ * range. Without a distance filter or a reader location, every service is returned.
+ */
+export function filterByDistance<T extends { tags: string[][] }>(services: T[], distance: string | undefined, from: LatLon | undefined): T[] {
+  const maxMiles = distanceFilterMiles(distance);
+  if (maxMiles === undefined || !from) return services;
+  return services.filter(service => {
+    const miles = nearestDistanceMiles(from, service.tags);
+    return miles !== undefined && miles <= maxMiles;
+  });
 }
 
 // Helper function to format distance
@@ -553,5 +557,6 @@ export function formatDistance(miles: number): string {
   if (miles < 0.25) return '~3 blocks';
   if (miles < 0.5) return '~½ mile';
   if (miles < 1) return '~¾ mile';
-  return `~${Math.round(miles)} mile${miles === 1 ? '' : 's'}`;
+  const rounded = Math.round(miles);
+  return `~${rounded} mile${rounded === 1 ? '' : 's'}`;
 }

@@ -62,7 +62,7 @@ export function TribeHeader({ tribe }: TribeHeaderProps) {
                 <h1 className="text-3xl font-bold">{tribeName}</h1>
                 <div className="flex gap-2 justify-center md:justify-start">
                   <Badge variant={isPublic ? "default" : "secondary"}>
-                    {isPublic ? "Public" : "Private"}
+                    {isPublic ? "Listed" : "Unlisted"}
                   </Badge>
                   <Badge variant={isOpen ? "default" : "outline"}>
                     {isOpen ? "Open" : "Closed"}

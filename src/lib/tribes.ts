@@ -109,3 +109,32 @@ export function withSingleTags(tags: string[][], updates: Record<string, string 
     .map(([name, value]) => [name, value]);
   return [...rest, ...added];
 }
+
+/**
+ * Tags for a new tribe definition. Every tag is public on Nostr. `listed: false` writes the
+ * legacy `private` flag, which only keeps the tribe out of Village Vibe's discovery lists;
+ * `open`/`closed` is informational, since joining always goes through an approved request.
+ */
+export function newTribeTags(input: {
+  dTag: string;
+  creator: string;
+  name: string;
+  description?: string;
+  location?: string;
+  image?: string;
+  listed: boolean;
+  open: boolean;
+}): string[][] {
+  const tags: string[][] = [
+    ['d', input.dTag],
+    ['name', input.name],
+    ['t', 'tribe'], // Tag for tribe discovery
+  ];
+  if (input.description) tags.push(['description', input.description]);
+  if (input.location) tags.push(['location', input.location]);
+  if (input.image) tags.push(['image', input.image]);
+  tags.push(['p', input.creator, '', 'admin']);
+  tags.push([input.listed ? 'public' : 'private']);
+  tags.push([input.open ? 'open' : 'closed']);
+  return tags;
+}

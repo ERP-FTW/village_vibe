@@ -105,7 +105,7 @@ export function TribeCard({ tribe, requestStatus }: TribeCardProps) {
             <h3 className="font-semibold truncate">{tribeName}</h3>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant={isPublic ? "default" : "secondary"} className="text-xs">
-                {isPublic ? "Public" : "Private"}
+                {isPublic ? "Listed" : "Unlisted"}
               </Badge>
               <Badge variant={isOpen ? "default" : "outline"} className="text-xs">
                 {isOpen ? "Open" : "Closed"}

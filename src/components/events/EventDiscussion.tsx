@@ -6,7 +6,7 @@ import { EventDiscussionForm } from "./EventDiscussionForm";
 import { EventDiscussionList } from "./EventDiscussionList";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { useCallback } from "react";
+import { detectRSVPStatus } from "@/lib/rsvp";
 
 interface EventDiscussionProps {
   event: NostrEvent;
@@ -18,28 +18,6 @@ export function EventDiscussion({ event }: EventDiscussionProps) {
 
   // Check if user is the event host
   const isHost = user?.pubkey === event.pubkey;
-
-  // Function to detect RSVP status from comment content
-  const detectRSVPStatus = useCallback((content: string): 'accepted' | 'tentative' | 'declined' | null => {
-    const normalizedContent = content.toLowerCase().trim();
-
-    // Check for positive responses
-    if (normalizedContent.match(/\b(yes|going|accept|attending|count me in|i'll be there|👍|✅|will attend|coming|see you there)\b/)) {
-      return 'accepted';
-    }
-
-    // Check for maybe responses
-    if (normalizedContent.match(/\b(maybe|might|tentative|possibly|not sure|🤔|might come|will try)\b/)) {
-      return 'tentative';
-    }
-
-    // Check for negative responses
-    if (normalizedContent.match(/\b(no|not going|decline|can't|cannot|won't|unable|❌|not attending|miss|skip)\b/)) {
-      return 'declined';
-    }
-
-    return null;
-  }, []);
 
   // Get RSVP comments for admin review
   const rsvpComments = discussionData?.allComments?.filter(comment => {
@@ -55,12 +33,12 @@ export function EventDiscussion({ event }: EventDiscussionProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              🎫 RSVP Replies Detected
+              🎫 Informal RSVP replies
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              The following discussion replies contain RSVP keywords. Click "Add as Attendee" to create official RSVPs.
+              These replies read like RSVPs. Only each person can publish their own RSVP, so they are shown here as informal replies.
             </p>
             <div className="space-y-3">
               {rsvpComments.map((comment) => {
@@ -70,7 +48,6 @@ export function EventDiscussion({ event }: EventDiscussionProps) {
                 return (
                   <EventDiscussionRSVP
                     key={comment.id}
-                    event={event}
                     comment={comment}
                     rsvpStatus={status}
                   />

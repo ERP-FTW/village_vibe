@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { genUserName } from "@/lib/genUserName";
+import { latestRSVPs } from "@/lib/rsvp";
 import { Users, UserCheck, UserX, HelpCircle } from "lucide-react";
 
 interface EventAttendeeListProps {
@@ -31,7 +32,7 @@ function AttendeeCard({ rsvp, hasAttended }: AttendeeCardProps) {
     if (hasAttended && status === 'accepted') {
       return {
         icon: <UserCheck className="h-4 w-4" />,
-        label: 'Attended',
+        label: 'Checked in',
         variant: 'default' as const,
         emoji: '🎉'
       };
@@ -107,7 +108,9 @@ function AttendeeCard({ rsvp, hasAttended }: AttendeeCardProps) {
   );
 }
 
-export function EventAttendeeList({ rsvps, isLoading, attendanceRecords }: EventAttendeeListProps) {
+export function EventAttendeeList({ rsvps: allRsvps, isLoading, attendanceRecords }: EventAttendeeListProps) {
+  // One entry per person: their latest RSVP
+  const rsvps = latestRSVPs(allRsvps);
   if (isLoading) {
     return (
       <Card>
@@ -194,8 +197,9 @@ export function EventAttendeeList({ rsvps, isLoading, attendanceRecords }: Event
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <UserCheck className="h-4 w-4 text-green-600" />
-              <h4 className="font-semibold">Attended ({attended.length})</h4>
+              <h4 className="font-semibold">Checked in ({attended.length})</h4>
             </div>
+            <p className="text-xs text-muted-foreground">Check-ins are self-reported with the host's code.</p>
             <div className="space-y-2">
               {attended.map((rsvp) => (
                 <AttendeeCard key={rsvp.id} rsvp={rsvp} hasAttended={true} />

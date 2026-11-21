@@ -5,13 +5,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ServiceCard } from './ServiceCard';
-import { ServiceFilters } from './ServiceFilters';
+import { DistanceFilterStatus, ServiceFilters } from './ServiceFilters';
 import { CreateServiceDialog } from './CreateServiceDialog';
 import { ServiceDebug } from './ServiceDebug';
 import { RelaySelector } from '@/components/RelaySelector';
-import { calculateDistance, useTribeServices, type ServiceFilters as ServiceFiltersType } from '@/hooks/useServices';
+import { filterByDistance, useTribeServices, type ServiceFilters as ServiceFiltersType } from '@/hooks/useServices';
 import { useApproximateLocation } from '@/hooks/useApproximateLocation';
-import { readLocation } from '@/lib/location';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { Plus, HandHeart, HelpCircle, Filter } from 'lucide-react';
@@ -56,16 +55,8 @@ export function TribeServices({ tribeId, className, isModerator = false }: Tribe
       );
     }
 
-    // Apply distance filter (simplified)
-    if (filters.distance && userLocation) {
-      const maxDistance = filters.distance === '3blocks' ? 0.1 :
-                         filters.distance === '0.5mi' ? 0.5 : 1;
-
-      filtered = filtered.filter(service => {
-        const location = readLocation(service.tags);
-        return !!location && calculateDistance(userLocation.lat, userLocation.lon, location.lat, location.lon) <= maxDistance;
-      });
-    }
+    // Distance filter (only once the reader has shared a location)
+    filtered = filterByDistance(filtered, filters.distance, userLocation);
 
     // Apply time/availability filter
     if (filters.when) {
@@ -182,6 +173,13 @@ export function TribeServices({ tribeId, className, isModerator = false }: Tribe
       {import.meta.env.DEV && <ServiceDebug tribeId={tribeId} />}
 
       {/* Filters */}
+      <DistanceFilterStatus
+        distance={filters.distance}
+        hasLocation={!!userLocation}
+        error={locationError}
+        onClear={() => setFilters({ ...filters, distance: undefined })}
+      />
+
       {showFilters && (
         <Card>
           <CardHeader>
@@ -192,9 +190,6 @@ export function TribeServices({ tribeId, className, isModerator = false }: Tribe
               filters={filters}
               onFiltersChange={setFilters}
             />
-            {filters.distance && locationError && (
-              <p className="mt-2 text-xs text-muted-foreground">{locationError} The distance filter is off.</p>
-            )}
           </CardContent>
         </Card>
       )}

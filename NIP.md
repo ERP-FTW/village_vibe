@@ -18,7 +18,7 @@ Village Vibe uses **kind 30023** (Long-form Content from NIP-23) for community s
 - `["cover", "<img-url>"]` - Cover image URL for story preview
 - `["village", "<village-slug>"]` - Added when story is promoted to village
 - `["place", "<location-name>"]` - Human-readable location name
-- `["g", "<geohash>"]` - Optional approximate location (6-character geohash, about 1 km). Older events used `["l", "<lat>,<lon>"]`, which clients still read; it collides with NIP-32 label tags, so new events no longer write it.
+- `["g", "<geohash>"]` - Optional approximate location (6-character geohash, a cell of about 0.4 x 0.6 miles). Readers treat it as the whole cell, for example a distance filter matches when any part of the cell is in range. Older events used `["l", "<lat>,<lon>"]`, which clients still read; it collides with NIP-32 label tags, so new events no longer write it.
 - `["ref", "<event-id>"]` - Reference to related event (if story is about an event)
 - `["alt", "Community story shared with the village"]` - NIP-31 alternative description
 
@@ -60,7 +60,7 @@ Village Vibe uses **kind 36959** (addressable events) for enhanced community eve
 - `["title", "<event-title>"]` - Event title
 - `["start", "<unix-timestamp>"]` - Event start time (Unix timestamp)
 - `["place", "<location-name>"]` - Human-readable location name
-- `["g", "<geohash>"]` - Optional approximate location (6-character geohash, about 1 km). Older events used `["l", "<lat>,<lon>"]`, which clients still read; it collides with NIP-32 label tags, so new events no longer write it.
+- `["g", "<geohash>"]` - Optional approximate location (6-character geohash, a cell of about 0.4 x 0.6 miles). Readers treat it as the whole cell, for example a distance filter matches when any part of the cell is in range. Older events used `["l", "<lat>,<lon>"]`, which clients still read; it collides with NIP-32 label tags, so new events no longer write it.
 
 ### Event Type Tags (Multi-select, Additive)
 

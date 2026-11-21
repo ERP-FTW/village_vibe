@@ -14,8 +14,8 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useUserBadgeAwards } from '@/hooks/useBadges';
 import { useCreateServiceMatch } from '@/hooks/useServices';
 import { useTribe } from '@/hooks/useTribes';
-import { extractServiceData, formatDistance, calculateDistance } from '@/hooks/useServices';
-import { readLocation } from '@/lib/location';
+import { extractServiceData, formatDistance } from '@/hooks/useServices';
+import { nearestDistanceMiles } from '@/lib/location';
 import { genUserName } from '@/lib/genUserName';
 import {
   MapPin,
@@ -59,14 +59,10 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
   const displayName = metadata?.name ?? genUserName(event.pubkey);
   const profileImage = metadata?.picture;
 
-  // Calculate distance if user location is available
-  let distance: string | undefined;
-  const coordinates = readLocation(event.tags);
-  if (userLocation && coordinates) {
-    const { lat, lon } = coordinates;
-    const miles = calculateDistance(userLocation.lat, userLocation.lon, lat, lon);
-    distance = formatDistance(miles);
-  }
+  // Published locations are approximate (a geohash cell): measure to its nearest point, so
+  // the card agrees with the distance filter; 0 means the reader is inside the cell.
+  const miles = userLocation ? nearestDistanceMiles(userLocation, event.tags) : undefined;
+  const distance = miles === undefined ? undefined : miles === 0 ? 'Nearby' : formatDistance(miles);
 
   const isOffer = event.kind === 38857;
 

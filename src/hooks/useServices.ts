@@ -1,7 +1,7 @@
 import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
-import { locationTags, readLocation } from '@/lib/location';
+import { distanceMiles, locationTags, nearestDistanceMiles, readLocation, type LatLon } from '@/lib/location';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -481,22 +481,27 @@ export function extractServiceData(event: NostrEvent) {
   };
 }
 
-// Helper function to calculate distance (simplified)
-export function calculateDistance(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const R = 3959; // Earth's radius in miles
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+/** Great-circle distance in miles. */
+export const calculateDistance = distanceMiles;
+
+/** The radius a service distance filter allows, in miles; undefined for "any distance". */
+export function distanceFilterMiles(distance?: string): number | undefined {
+  if (!distance) return undefined;
+  return distance === '3blocks' ? 0.1 : distance === '0.5mi' ? 0.5 : 1;
+}
+
+/**
+ * Services that could be within the filter's radius of the reader. A service's published
+ * location is approximate (a geohash cell), so it matches when any part of its cell is in
+ * range. Without a distance filter or a reader location, every service is returned.
+ */
+export function filterByDistance<T extends { tags: string[][] }>(services: T[], distance: string | undefined, from: LatLon | undefined): T[] {
+  const maxMiles = distanceFilterMiles(distance);
+  if (maxMiles === undefined || !from) return services;
+  return services.filter(service => {
+    const miles = nearestDistanceMiles(from, service.tags);
+    return miles !== undefined && miles <= maxMiles;
+  });
 }
 
 // Helper function to format distance

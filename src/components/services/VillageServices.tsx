@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useApproximateLocation } from '@/hooks/useApproximateLocation';
-import { readLocation } from '@/lib/location';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ServiceCard } from './ServiceCard';
-import { ServiceFilters } from './ServiceFilters';
+import { DistanceFilterStatus, ServiceFilters } from './ServiceFilters';
 import { RelaySelector } from '@/components/RelaySelector';
-import { calculateDistance, useVillageServices, type ServiceFilters as ServiceFiltersType } from '@/hooks/useServices';
+import { filterByDistance, useVillageServices, type ServiceFilters as ServiceFiltersType } from '@/hooks/useServices';
 import { useTribe } from '@/hooks/useTribes';
 import { Filter, MapPin } from 'lucide-react';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -25,19 +24,13 @@ export function VillageServices({ villageSlug, className }: VillageServicesProps
   const { data: allServices, isLoading, error } = useVillageServices(villageSlug, filters);
 
   // The reader's location is only requested when they choose a distance filter
-  const { location: userLocation, request: requestLocation } = useApproximateLocation();
+  const { location: userLocation, error: locationError, request: requestLocation } = useApproximateLocation();
   useEffect(() => {
     if (filters.distance && !userLocation) void requestLocation();
   }, [filters.distance, userLocation, requestLocation]);
 
   // Distance filter (only once the reader has shared a location)
-  const maxMiles = filters.distance === '3blocks' ? 0.1 : filters.distance === '0.5mi' ? 0.5 : filters.distance ? 1 : undefined;
-  const services = maxMiles !== undefined && userLocation
-    ? allServices?.filter(service => {
-      const location = readLocation(service.tags);
-      return !!location && calculateDistance(userLocation.lat, userLocation.lon, location.lat, location.lon) <= maxMiles;
-    })
-    : allServices;
+  const services = allServices && filterByDistance(allServices, filters.distance, userLocation);
 
   // Group services by tribe for display
   const servicesByTribe = services?.reduce((acc, service) => {
@@ -140,6 +133,13 @@ export function VillageServices({ villageSlug, className }: VillageServicesProps
           Filters
         </Button>
       </div>
+
+      <DistanceFilterStatus
+        distance={filters.distance}
+        hasLocation={!!userLocation}
+        error={locationError}
+        onClear={() => setFilters({ ...filters, distance: undefined })}
+      />
 
       {/* Filters */}
       {showFilters && (

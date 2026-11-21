@@ -160,3 +160,28 @@ export function ServiceFilters({ filters, onFiltersChange, className }: ServiceF
     </div>
   );
 }
+interface DistanceFilterStatusProps {
+  distance?: string;
+  hasLocation: boolean;
+  error?: string;
+  onClear: () => void;
+}
+
+/** Says when a chosen distance filter is not being applied yet (or at all). */
+export function DistanceFilterStatus({ distance, hasLocation, error, onClear }: DistanceFilterStatusProps) {
+  if (!distance || hasLocation) return null;
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+      <span>
+        {error
+          ? `${error} The distance filter is off, so all services are shown.`
+          : 'Getting your approximate location. All services are shown until then.'}
+      </span>
+      {error && (
+        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={onClear}>
+          Clear distance filter
+        </Button>
+      )}
+    </div>
+  );
+}

@@ -21,10 +21,11 @@ const NIP19Page = lazy(() => import("./pages/NIP19Page").then(m => ({ default: m
 const NIPPage = lazy(() => import("./pages/NIPPage").then(m => ({ default: m.NIPPage })));
 const HashtagPage = lazy(() => import("./pages/HashtagPage"));
 import NotFound from "./pages/NotFound";
+import { ROUTER_BASENAME } from "@/lib/appUrl";
 
 export function AppRouter() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={ROUTER_BASENAME}>
       <ScrollToTop />
       <Layout>
         <Suspense fallback={<RouteFallback />}>

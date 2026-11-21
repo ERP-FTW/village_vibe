@@ -3,8 +3,12 @@ import path from "node:path";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig } from "vitest/config";
 
+import { normalizeBasePath } from "./src/lib/basePath";
+
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
+  // Served at a domain root by default; set VITE_BASE_PATH (e.g. "/village_vibe/") for a subpath.
+  base: normalizeBasePath(process.env.VITE_BASE_PATH),
   server: {
     host: "::",
     port: 8080,

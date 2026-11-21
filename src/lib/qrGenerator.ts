@@ -1,8 +1,9 @@
 import QRCode from 'qrcode';
+import { appUrl } from './appUrl';
 
 /** Public URL of a tribe's Services tab (route: /tribe/:tribeId). */
 export function tribeServicesUrl(tribeId: string): string {
-  return `${window.location.origin}/tribe/${tribeId}?tab=services`;
+  return appUrl(`tribe/${tribeId}?tab=services`);
 }
 
 function escapeXml(value: string): string {
@@ -65,7 +66,7 @@ export async function generateTribeServicesPoster(
   
   const title = escapeXml(options.title || `${tribeName} Services`);
   const subtitle = escapeXml(options.subtitle || 'Offer help • Need help?');
-  const url = escapeXml(`${window.location.origin}/tribe/${tribeId}`);
+  const url = escapeXml(appUrl(`tribe/${tribeId}`));
   
   // Create SVG poster
   const svg = `

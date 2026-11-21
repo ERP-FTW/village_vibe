@@ -2,6 +2,20 @@
 
 This document describes the custom Nostr event kinds and extensions used by Village Vibe for community stories, events, services, and village aggregation.
 
+## Linking Content to Tribes and Villages
+
+Events (36959, 31923), stories (30023) and services (38857, 30627) are linked to their tribe and villages with relay-indexed single-letter tags. Each link is also written in the legacy multi-letter form, so older clients keep working.
+
+| Link | Indexed tags (query with) | Legacy tag (still written) |
+|---|---|---|
+| Tribe | `["a", "34550:<tribe-owner-pubkey>:<tribe-d-tag>"]` (`#a`) | `["tribe", "<tribe-d-tag>"]` |
+| Village | `["t", "village"]` and `["t", "village-<slug>"]` (`#t`) | `["village", "<slug>"]` |
+
+- Village slugs are lowercase ASCII words joined by `-`, for example `east-side`.
+- A tribe feed accepts content tagged with the tribe coordinate only from the tribe's members. Events are accepted only from the owner, admins, moderators and event creators.
+- A tribe feed drops content that a tribe moderator has labelled `tribe-hidden` (kind 1985).
+- Content from before the indexed tags is found through its authors (tribe feeds) or the legacy `village` tag (village feeds).
+
 ## Stories (NIP-23 Extension)
 
 Village Vibe uses **kind 30023** (Long-form Content from NIP-23) for community stories with the following extensions:

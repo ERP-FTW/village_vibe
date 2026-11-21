@@ -3,6 +3,7 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { extractServiceData, usePromoteServiceToVillages } from '@/hooks/useServices';
 import { slugifyVillage } from '@/lib/villages';
+import { villagesOf, withVillageTags } from '@/lib/contentTags';
 import {
   Dialog,
   DialogContent,
@@ -40,10 +41,7 @@ export function ServicePromotionDialog({ children, service }: ServicePromotionDi
   const serviceType = service.kind === 38857 ? 'offer' : 'request';
 
   // Extract current villages from service tags
-  const currentVillages = service.tags
-    .filter(([name]) => name === 'village')
-    .map(([, value]) => value)
-    .filter(Boolean);
+  const currentVillages = villagesOf(service.tags);
 
   const [villages, setVillages] = useState<string[]>(currentVillages);
   // Only the author can rewrite the service's own village tags. Anyone else adds
@@ -82,9 +80,7 @@ export function ServicePromotionDialog({ children, service }: ServicePromotionDi
         await publishEvent({
           kind: service.kind,
           content: service.content,
-          tags: service.tags
-            .filter(([name]) => name !== 'village')
-            .concat(villages.map(village => ['village', village])),
+          tags: withVillageTags(service.tags, villages),
         });
       } else {
         const added = villages.filter(village => !currentVillages.includes(village));

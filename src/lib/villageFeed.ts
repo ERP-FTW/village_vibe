@@ -9,17 +9,68 @@ export interface VillageFeed {
   events: NostrEvent[];
   /** Coordinates featured in the requested villages by a moderator of the content's tribe. */
   featured: Set<string>;
+  /**
+   * False when promotion discovery may have missed promotions (and the content they bring
+   * in): a window was full, or a crowded second held more labels than a relay will list.
+   */
+  promotionsComplete: boolean;
+  /** Reading more windows (`promotionPages`) can find more; false once only skips remain. */
+  promotionsCanReadFurther: boolean;
+}
+
+export interface VillageFeedOptions {
+  /** Windows of promotion labels to read per source, newest first (1 = newest window only). */
+  promotionPages?: number;
 }
 
 const PROMOTED = 'village-promoted';
 const FEATURED = 'village-featured';
+/** Labels read per discovery window. */
+export const LABEL_WINDOW = 200;
+export const MAX_PROMOTION_PAGES = 10;
 
 function labelValue(label: NostrEvent): string | undefined {
   return label.tags.find(([name, value]) => name === 'l' && (value === PROMOTED || value === FEATURED))?.[1];
 }
 
+/** Villages a label applies to (legacy `village` tags or indexed `t` village topics). */
 function labelVillages(label: NostrEvent): string[] {
-  return label.tags.filter(([name]) => name === 'village').map(([, value]) => slugifyVillage(value ?? '')).filter(Boolean);
+  return villagesOf(label.tags).map(value => slugifyVillage(value)).filter(Boolean);
+}
+
+function promotionFilter(scope: NostrFilter, until?: number): NostrFilter {
+  return { kinds: [1985], '#l': [PROMOTED, FEATURED], limit: LABEL_WINDOW, ...scope, ...(until !== undefined ? { until } : {}) };
+}
+
+/** A way of finding promotion labels, and how far back it has been read. */
+interface LabelSource {
+  scope: NostrFilter;
+  /** More labels may exist before `until` (the window was full). */
+  saturated: boolean;
+  until?: number;
+  /** Paging had to step past a second holding more labels than a window: some can't be read. */
+  skipped?: boolean;
+}
+
+/** Window state after reading `labels` (newest first) for one source. */
+function windowState(scope: NostrFilter, labels: NostrEvent[], previous?: LabelSource): LabelSource {
+  const skipped = previous?.skipped;
+  if (labels.length < LABEL_WINDOW) return { scope, saturated: false, skipped };
+  const sorted = [...labels].sort((a, b) => b.created_at - a.created_at);
+  const oldest = sorted[LABEL_WINDOW - 1].created_at;
+  // Inclusive paging. Only a full window that can't move the cursor back (every label at the
+  // `until` second) means that second holds more labels than a relay lists: step past it and
+  // remember that some labels couldn't be read. Labels already known from another source
+  // don't count either way.
+  if (previous?.until !== undefined && oldest >= previous.until) {
+    return { scope, saturated: true, until: previous.until - 1, skipped: true };
+  }
+  return { scope, saturated: true, until: oldest, skipped };
+}
+
+/** A source whose first window couldn't be read: incomplete, and retried by reading further. */
+function failedSource(scope: NostrFilter): LabelSource {
+  return { scope, saturated: true };
 }
 
 /** Tribe references of a piece of content: exact coordinates, or the legacy d tag. */
@@ -122,40 +173,100 @@ export function makeVillageTrust(tribes: NostrEvent[]) {
  */
 export async function readVillageFeed(
   nostr: NPool, villages: string[], contentFilters: NostrFilter[], signal: AbortSignal,
+  options: VillageFeedOptions = {},
 ): Promise<VillageFeed> {
-  const labels = { kinds: [1985], '#l': [PROMOTED, FEATURED], limit: 200 };
   const wantsVillage = (village: string) => !villages.length || villages.includes(village);
   const isContent = (event: NostrEvent) => event.kind !== 1985;
   const topics = villages.length ? villages.map(villageTopic) : [VILLAGE_TOPIC];
 
+  // Promotion labels come from three sources:
+  // - indexed: labels carrying `t` village topics (written since the indexed tag model),
+  // - legacy: labels with only multi-letter `village` tags, queried by `#village` (some
+  //   relays reject such filters, so it shares the separate legacy REQ),
+  // - recent: the newest labels overall, a bounded fallback for legacy labels when the
+  //   legacy filter is unavailable (all-villages feed, or a relay rejecting it).
+  const indexedScope: NostrFilter = { '#t': topics };
+  const legacyScope: NostrFilter = { '#village': villages };
+  const recentScope: NostrFilter = {};
+
   const [indexed, legacy] = await Promise.allSettled([
-    nostr.query([...contentFilters.map(f => ({ ...f, '#t': topics })), labels], { signal }),
+    nostr.query([...contentFilters.map(f => ({ ...f, '#t': topics })), promotionFilter(indexedScope), promotionFilter(recentScope)], { signal }),
     // Separate REQ: some relays reject the whole subscription for multi-letter tag filters.
     villages.length
-      ? nostr.query(contentFilters.map(f => ({ ...f, '#village': villages })), { signal })
+      ? nostr.query([...contentFilters.map(f => ({ ...f, '#village': villages })), promotionFilter(legacyScope)], { signal })
       : Promise.resolve([] as NostrEvent[]),
   ]);
   signal.throwIfAborted();
   if (indexed.status === 'rejected' && legacy.status === 'rejected') throw indexed.reason;
 
-  let records = [
-    ...(indexed.status === 'fulfilled' ? indexed.value : []),
-    ...(legacy.status === 'fulfilled' ? legacy.value : []),
-  ];
+  const indexedRecords = indexed.status === 'fulfilled' ? indexed.value : [];
+  const legacyRecords = legacy.status === 'fulfilled' ? legacy.value : [];
+  let records = [...indexedRecords, ...legacyRecords];
   const tagged = (event: NostrEvent) => isContent(event) && villagesOf(event.tags).some(wantsVillage);
   // Legacy content is only reachable through `#village`, which some relays reject and others
   // silently answer with nothing, and the all-villages feed has no legacy filter at all. Unless
   // the legacy query itself returned matches, scan recent content so posts from before the
   // indexed tags keep showing (new indexed posts must not hide them).
-  const legacyMatched = legacy.status === 'fulfilled' && legacy.value.some(tagged);
-  if (!villages.length || !legacyMatched) {
+  const legacyMatched = legacy.status === 'fulfilled' && legacyRecords.some(tagged);
+  // If the indexed REQ failed, its promotion labels are requested again with the scan.
+  let labelRecords: NostrEvent[] | undefined = indexed.status === 'fulfilled' ? indexedRecords : undefined;
+  if (!villages.length || !legacyMatched || !labelRecords) {
+    const retryLabels = !labelRecords;
     try {
-      records = [...records, ...await nostr.query([...contentFilters, labels], { signal })];
+      const scanned = await nostr.query(
+        retryLabels ? [...contentFilters, promotionFilter(indexedScope), promotionFilter(recentScope)] : contentFilters,
+        { signal },
+      );
+      records = [...records, ...scanned];
+      if (retryLabels) labelRecords = scanned;
     } catch (error) {
       signal.throwIfAborted();
       if (!records.length) throw error;
     }
   }
+
+  // Where each label source stands after the first window
+  const isPromotion = (event: NostrEvent) => event.kind === 1985 && !!labelValue(event);
+  const seen = new Set<string>();
+  const indexedLabels = (labelRecords ?? []).filter(isPromotion);
+  // A relay may answer an unsupported `#village` filter with nothing instead of rejecting
+  // it, so the legacy source only replaces the recent fallback once it has returned matches.
+  const legacyAvailable = villages.length > 0 && legacy.status === 'fulfilled'
+    && legacyRecords.some(event => isPromotion(event) || tagged(event));
+  const sources = {
+    // Neither request carrying these labels succeeded: incomplete, retried by reading further
+    indexed: labelRecords
+      ? windowState(indexedScope, indexedLabels.filter(label => label.tags.some(([name, value]) => name === 't' && topics.includes(value))))
+      : failedSource(indexedScope),
+    // The recent window is the newest LABEL_WINDOW labels of the indexed REQ's results
+    recent: labelRecords ? windowState(recentScope, indexedLabels) : failedSource(recentScope),
+    legacy: legacyAvailable ? windowState(legacyScope, legacyRecords.filter(isPromotion)) : undefined,
+  };
+  [...indexedLabels, ...legacyRecords.filter(isPromotion)].forEach(label => seen.add(label.id));
+  // The sources that decide completeness: legacy labels are fully covered by the legacy
+  // filter when it works, otherwise only the bounded recent window can find them.
+  const deciding = (): LabelSource[] => [sources.indexed, sources.legacy ?? sources.recent];
+
+  // Further windows, only when asked for and only for sources that were full
+  const discovered: NostrEvent[] = [];
+  const pages = Math.min(Math.max(options.promotionPages ?? 1, 1), MAX_PROMOTION_PAGES);
+  for (let page = 1; page < pages; page++) {
+    const full = deciding().filter(source => source.saturated);
+    if (!full.length) break;
+    const windows = await Promise.allSettled(full.map(source => nostr.query([promotionFilter(source.scope, source.until)], { signal })));
+    signal.throwIfAborted();
+    windows.forEach((result, i) => {
+      const source = full[i];
+      const key = source === sources.indexed ? 'indexed' : source === sources.legacy ? 'legacy' : 'recent';
+      if (result.status === 'rejected') return; // stays full: still incomplete
+      const labels = result.value.filter(isPromotion);
+      sources[key] = windowState(source.scope, labels, source);
+      labels.forEach(label => { if (!seen.has(label.id)) { seen.add(label.id); discovered.push(label); } });
+    });
+  }
+  const promotionsComplete = deciding().every(source => !source.saturated && !source.skipped);
+  const promotionsCanReadFurther = deciding().some(source => source.saturated);
+  records = [...records, ...discovered];
 
   const labelEvents = records.filter(event => event.kind === 1985 && labelValue(event));
   const labelsFor = new Map<string, NostrEvent[]>();
@@ -232,5 +343,5 @@ export async function readVillageFeed(
       if ([...trust.featuredIn(event, related)].some(wantsVillage)) featured.add(address);
     }
   }
-  return { events, featured };
+  return { events, featured, promotionsComplete, promotionsCanReadFurther };
 }

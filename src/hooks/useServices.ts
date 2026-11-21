@@ -37,6 +37,8 @@ export interface ServiceFilters {
   village?: string;
   search?: string;
   limit?: number;
+  /** Village feeds: windows of promotion labels to read (see readVillageFeed). */
+  promotionPages?: number;
 }
 
 // Hook to get services for a specific tribe
@@ -122,7 +124,7 @@ export function useVillageServices(villageSlugOrList: string | string[], filters
 
 
       const { events: villageEvents } = await readVillageFeed(nostr, villages,
-        [{ kinds, limit: filters.limit || 200 }], signal);
+        [{ kinds, limit: filters.limit || 200 }], signal, { promotionPages: filters.promotionPages });
 
       // Apply additional filters
       let filteredEvents = villageEvents;
@@ -257,9 +259,9 @@ export function usePromoteServiceToVillages() {
       ];
 
       // Add village context to label
-      villages.forEach(village => {
-        labelTags.push(['village', village]);
-      });
+      // Legacy `village` tags plus indexed `t` village topics, so readers can find this
+      // promotion by village (relays only index single-letter tags)
+      labelTags.splice(0, labelTags.length, ...withVillageTags(labelTags, villages));
 
       const promotionLabel = {
         kind: 1985,
@@ -329,7 +331,8 @@ export function useCreateServiceLabel() {
         ['alt', `Service moderation label: ${data.label}`],
       ];
 
-      data.villages?.forEach(village => tags.push(['village', village]));
+      // Legacy `village` tags plus indexed `t` village topics (see promotion discovery)
+      if (data.villages?.length) tags.splice(0, tags.length, ...withVillageTags(tags, data.villages));
 
       // Add namespace tag if provided
       if (data.namespace) {

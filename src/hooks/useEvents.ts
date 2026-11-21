@@ -55,6 +55,8 @@ export interface EventFilters {
   search?: string;
   showPrivateInvited?: boolean;
   limit?: number;
+  /** Village feeds: windows of promotion labels to read (see readVillageFeed). */
+  promotionPages?: number;
 }
 
 // Hook to get events for a specific tribe
@@ -244,7 +246,7 @@ export function useVillageEvents(villageSlugOrList: string | string[], filters: 
 
 
       const { events: villageEvents } = await readVillageFeed(nostr, villages,
-        [{ kinds: [36959], limit: filters.limit || 150 }, { kinds: [31923], limit: 50 }], signal);
+        [{ kinds: [36959], limit: filters.limit || 150 }, { kinds: [31923], limit: 50 }], signal, { promotionPages: filters.promotionPages });
 
       // Validate events
       const validEvents = villageEvents.filter(event =>
@@ -315,9 +317,9 @@ export function usePromoteEventToVillages() {
       ];
 
       // Add village context to label
-      villages.forEach(village => {
-        labelTags.push(['village', village]);
-      });
+      // Legacy `village` tags plus indexed `t` village topics, so readers can find this
+      // promotion by village (relays only index single-letter tags)
+      labelTags.splice(0, labelTags.length, ...withVillageTags(labelTags, villages));
 
       const promotionLabel = {
         kind: 1985,
@@ -543,7 +545,8 @@ export function useCreateEventLabel() {
         ['alt', `Event moderation label: ${data.label}`],
       ];
 
-      data.villages?.forEach(village => tags.push(['village', village]));
+      // Legacy `village` tags plus indexed `t` village topics (see promotion discovery)
+      if (data.villages?.length) tags.splice(0, tags.length, ...withVillageTags(tags, data.villages));
 
       // Add namespace tag if provided
       if (data.namespace) {

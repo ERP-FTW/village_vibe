@@ -18,6 +18,8 @@ export interface StoryFilters {
   search?: string;
   featured?: boolean;
   limit?: number;
+  /** Village feeds: windows of promotion labels to read (see readVillageFeed). */
+  promotionPages?: number;
 }
 
 function searchStories(events: NostrEvent[], search?: string) {
@@ -206,7 +208,8 @@ export function useCreateStoryLabel() {
         ['alt', `Story moderation label: ${data.label}`],
       ];
 
-      data.villages?.forEach(village => tags.push(['village', village]));
+      // Legacy `village` tags plus indexed `t` village topics (see promotion discovery)
+      if (data.villages?.length) tags.splice(0, tags.length, ...withVillageTags(tags, data.villages));
 
       // Add namespace tag if provided
       if (data.namespace) {
@@ -288,9 +291,9 @@ export function usePromoteStoryToVillages() {
       ];
 
       // Add village context to label
-      villages.forEach(village => {
-        labelTags.push(['village', village]);
-      });
+      // Legacy `village` tags plus indexed `t` village topics, so readers can find this
+      // promotion by village (relays only index single-letter tags)
+      labelTags.splice(0, labelTags.length, ...withVillageTags(labelTags, villages));
 
       const promotionLabel = {
         kind: 1985,
@@ -403,14 +406,14 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
   const { search, ...queryFilters } = filters;
   return useQuery({
     queryKey: ['multi-village-stories', villages, queryFilters, preferences.hiddenTribes],
-    select: (feed: { stories: NostrEvent[]; featured: string[] }) => ({ ...feed, stories: searchStories(feed.stories, search) }),
+    select: (feed: { stories: NostrEvent[]; featured: string[]; promotionsComplete: boolean; promotionsCanReadFurther: boolean }) => ({ ...feed, stories: searchStories(feed.stories, search) }),
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
       const { signal } = c;
 
 
-      const { events: villageEvents, featured } = await readVillageFeed(nostr, villages,
-        [{ kinds: [30023], limit: filters.limit || 200 }], signal);
+      const { events: villageEvents, featured, promotionsComplete, promotionsCanReadFurther } = await readVillageFeed(nostr, villages,
+        [{ kinds: [30023], limit: filters.limit || 200 }], signal, { promotionPages: filters.promotionPages });
 
       // Apply additional filters
       const filteredEvents = villageEvents;
@@ -434,6 +437,9 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
         stories: uniqueEvents.sort((a, b) => b.created_at - a.created_at),
         // Coordinates a moderator of the story's tribe featured in these villages
         featured: [...featured],
+        // False when promotions may have been missed; whether more windows can help
+        promotionsComplete,
+        promotionsCanReadFurther,
       };
     },
   });

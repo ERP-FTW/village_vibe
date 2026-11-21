@@ -31,29 +31,36 @@ Line numbers refer to commit `3433ddc`.
 | §7 UX | Mobile menu. Debug panels dev-only. Search filters locally. Preferences sync. Route code splitting: 801 KB main bundle, was 1.29 MB. 41 `console.log` calls removed. |
 | §8 Dead code | Dead files, barrels and unused hooks removed. |
 
-**Still open:**
-- **§4c Tag model:** content still links to tribes and villages with multi-letter `tribe`/`village` tags. Moving to `a` (tribe coordinate) and single-letter village tags needs a data migration decision. Until then, village feeds rely on client-side filtering, and tribes larger than 500 members exceed the author-list cap.
-- **§4d Remaining moderation gaps:**
-  - Promotion labels are still accepted from any author in village feeds.
-  - Self-tagged `village` content still appears without approval.
-  - Coordination roles, items and tasks are accepted from anyone.
-  - "Featured" is still the first six stories.
-- **§5 Remaining privacy and security work:**
-  - DMs are still NIP-04 only (no NIP-17).
-  - ProfileSettings should reuse `EditProfileForm`.
-  - Check-in "verification" is still self-reported.
-  - Host-signed RSVPs still exist (`EventDiscussionRSVP`).
-- **§6 Remaining broken features:**
-  - Service match schema mismatch (`by` tag).
-  - Claims modelling (random d-tags, per-event counts).
-  - Roles tab grouping.
-  - RSVP keyword detection.
-  - Markdown rendering for stories.
-  - Hard-coded Seattle/Detroit coordinates in `l` tags.
-- **§7 N+1 queries:** per-card author, badge and zap queries are not batched yet.
-- **§8 Duplicates:** the three moderation dialogs, the discussion components (vs `CommentsSection`), and `DownloadNIP` (vs NIP.md) are still duplicated. The four identical prompt files remain.
-- **§9 Docs:** NIP.md still lacks the services, tribes, check-in and privacy kinds.
-- **Not verifiable here:** this environment blocks WebSocket connections to relays. The relay and publish behaviour was verified with simulated relays and a headless-browser smoke test, not against live relays.
+## Repair plan
+
+Each audit item is a separate PR. **Done** PRs form a stack that merges in order into `almost`. **Planned** PRs branch from the top of that stack.
+
+"Codex" marks the foundational PRs that get a Codex review (up to 5 fix rounds or until green).
+
+| # | Audit § | PR | Scope | State |
+|---|---|---|---|---|
+| 01 | §1–3 | #3 | CI gate, `RelayPool` reads, publish-before-confirm (Codex) | Done |
+| 02 | §4a–c | #4 | Tribe authority, membership writes, member content in tribe feeds (Codex) | Done |
+| 03 | §4a | #5 | Promotion via labels, not re-signed copies | Done |
+| 04 | §6 | #6 | Share links, QR route, NIP-19 pages, event display | Done |
+| 05 | §5 | #7 | Profile URLs, badge issuers, zaps, DM list and decryption | Done |
+| 06 | §7–8 | #8 | Mobile menu, synced preferences, code splitting, dev-only debug UI | Done |
+| 07 | §4d | #9 | Honour moderators' hide labels | Done |
+| 08 | §4c | | Indexed tag model: tribe `a` + single-letter village tag on publish, dual read (Codex) | Planned |
+| 09 | §4d | | Village moderation: only tribe moderators' promotion labels, scoped by village; featured from labels; self-tagged village content needs tribe association (Codex) | Planned |
+| 10 | §6, §4d | | Coordination integrity: trusted authors, deterministic claims, distinct counts, roles tab, task status | Planned |
+| 11 | §5, §6 | | RSVP and check-in integrity: no host-signed RSVPs, negation-aware detection, latest RSVP per person, honest check-in copy | Planned |
+| 12 | §6 | | Services: match schema, show matches, NIP-40 expiry, village slugs, main-feed preferences | Planned |
+| 13 | §5 | | DMs: NIP-17 send/read with NIP-04 fallback (Codex) | Planned |
+| 14 | §6 | | Story Markdown rendering | Planned |
+| 15 | §7 | | Remove hard-coded coordinates / `l` misuse | Planned |
+| 16 | §7 | | Batch per-card author/badge/zap queries | Planned |
+| 17 | §8 | | Consolidate moderation dialogs, discussion → `CommentsSection`, `DownloadNIP` from NIP.md | Planned |
+| 18 | §7 | | Chat layout and accessibility | Planned |
+| 19 | §9 | | NIP.md completeness, README, stale docs, package name | Planned |
+| 20 | §1 | | Deploy workflow targets `main` but the default branch is `almost` (needs owner decision) | Planned |
+
+Not verifiable here: this environment blocks WebSocket connections to relays. Relay and publish behaviour was verified with simulated relays and a headless-browser smoke test.
 
 ---
 

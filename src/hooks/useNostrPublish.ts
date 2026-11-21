@@ -18,6 +18,11 @@ function affectedQueries(event: NostrEvent): QueryKey[] {
     case 9021:
     case 9022: return [['join-requests', tag('h')], ['tribe-join-requests', tag('h')], ['tribes-card-statuses']];
     case 30078: return tag('d') === 'profile-privacy' ? [['profile-privacy', event.pubkey]] : [];
+    // Moderation and promotion labels change what every feed shows.
+    case 1985: return [['story-labels'], ['event-labels'], ['service-labels'],
+      ['tribe-events'], ['village-events'], ['tribe-stories'], ['village-stories'], ['multi-village-stories'],
+      ['tribe-services'], ['village-services']];
+    case 34871: return [['service-matches']];
     case 34550: return [['tribe', coordinate], ['public-tribes'], ['my-tribes'], ['tribe-name', tag('d')],
       ['tribe-member-count', coordinate], ['join-requests', coordinate]];
     case 30627:

@@ -25,14 +25,23 @@ export async function readVillageFeed(
   const references = new Set(records.filter(event =>
     event.kind === 1985 && (!villages.length || matchesVillage(event)))
     .flatMap(event => event.tags.filter(([name]) => name === 'a').map(([, address]) => address)));
-  const missing: NostrFilter[] = [];
+  // One filter per kind+author keeps the REQ small (relays cap filters per subscription).
+  const wanted = new Map<string, { kind: number; author: string; identifiers: Set<string> }>();
+  const present = new Set(selected.map(event =>
+    `${event.kind}:${event.pubkey}:${event.tags.find(([name]) => name === 'd')?.[1] ?? ''}`));
   for (const address of references) {
-    if (!address) continue;
+    if (!address || present.has(address)) continue;
     const [kind, author, ...identifier] = address.split(':');
     if (kinds.has(Number(kind)) && /^[0-9a-f]{64}$/.test(author) && identifier.length) {
-      missing.push({ kinds: [Number(kind)], authors: [author], '#d': [identifier.join(':')], limit: 1 });
+      const key = `${kind}:${author}`;
+      const entry = wanted.get(key) ?? { kind: Number(kind), author, identifiers: new Set<string>() };
+      entry.identifiers.add(identifier.join(':'));
+      wanted.set(key, entry);
     }
   }
+  const missing: NostrFilter[] = [...wanted.values()].map(({ kind, author, identifiers }) => ({
+    kinds: [kind], authors: [author], '#d': [...identifiers], limit: identifiers.size,
+  }));
   if (missing.length) {
     try {
       selected.push(...await nostr.query(missing, { signal }));

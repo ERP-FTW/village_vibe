@@ -7,6 +7,8 @@ import { EventCheckIn } from "./EventCheckIn";
 import { AttendeeCheckIn } from "./AttendeeCheckIn";
 import { EventDiscussion } from "./EventDiscussion";
 import { EventCoordinationTabs } from "./EventCoordinationTabs";
+import { useCoordinationTrust } from "@/hooks/useEventCoordination";
+import type { NostrEvent } from "@nostrify/nostrify";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -110,11 +112,7 @@ export function EventView({ eventId }: EventViewProps) {
         </TabsList>
 
         <TabsContent value="coordination">
-          <EventCoordinationTabs
-            event={event}
-            isOrganizer={isHost}
-            isModerator={false}
-          />
+          <EventCoordinationSection event={event} isHost={isHost} />
         </TabsContent>
 
         <TabsContent value="rsvp">
@@ -161,5 +159,18 @@ export function EventView({ eventId }: EventViewProps) {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+/** Coordination tabs; tribe moderators can manage alongside the organizer. */
+function EventCoordinationSection({ event, isHost }: { event: NostrEvent; isHost: boolean }) {
+  const { user } = useCurrentUser();
+  const trusted = useCoordinationTrust(event);
+  return (
+    <EventCoordinationTabs
+      event={event}
+      isOrganizer={isHost}
+      isModerator={!!user && !isHost && trusted.has(user.pubkey)}
+    />
   );
 }

@@ -35,9 +35,29 @@ export function ItemCard({ item, event, claims }: ItemCardProps) {
   const activeClaims = claims.filter(c => c.status === 'active');
   const userClaims = activeClaims.filter(c => c.claimedBy === user?.pubkey);
   const userClaimedQty = userClaims.reduce((sum, c) => sum + c.quantity, 0);
-  // Use item.claimed (computed by batched query) as primary source; fall back to local sum
-  const claimedCount = item.claimed || activeClaims.reduce((sum, c) => sum + c.quantity, 0);
-  const qtyLeft = item.quantity - claimedCount;
+  // item.claimed sums each person's latest active claim (computed by the batched query)
+  const claimedCount = item.claimed;
+  const qtyLeft = Math.max(0, item.quantity - claimedCount);
+
+  const handleWithdraw = () => {
+    claimItem({
+      itemId: item.id,
+      itemEventId: item.nostrId,
+      eventId: event.id,
+      eventKind: event.kind,
+      eventAuthor: event.pubkey,
+      eventDTag: dTag,
+      quantity: 0,
+      status: 'withdrawn',
+    }, {
+      onSuccess: () => toast({ title: "Withdrawn", description: "Your claim has been withdrawn." }),
+      onError: (err) => toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to withdraw your claim",
+        variant: "destructive",
+      }),
+    });
+  };
 
   const handleClaim = async () => {
     if (!user) {
@@ -59,14 +79,15 @@ export function ItemCard({ item, event, claims }: ItemCardProps) {
       return;
     }
 
+    // A person has one claim per item: claiming more raises their total.
     claimItem({
       itemId: item.id,
-      itemEventId: event.id,
+      itemEventId: item.nostrId,
       eventId: event.id,
       eventKind: event.kind,
       eventAuthor: event.pubkey,
       eventDTag: dTag,
-      quantity,
+      quantity: userClaimedQty + quantity,
       notes: claimNotes.trim() || undefined,
     }, {
       onSuccess: () => {
@@ -195,8 +216,11 @@ export function ItemCard({ item, event, claims }: ItemCardProps) {
           )}
 
           {userClaimedQty > 0 && (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-center text-sm text-green-700">
-              ✓ You've claimed {userClaimedQty} {item.unit || 'item'}{userClaimedQty > 1 ? 's' : ''}
+            <div className="flex items-center justify-between gap-2 bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-sm text-green-700">
+              <span>✓ You've claimed {userClaimedQty} {item.unit || 'item'}{userClaimedQty > 1 ? 's' : ''}</span>
+              <Button size="sm" variant="ghost" onClick={handleWithdraw} disabled={isClaiming}>
+                Withdraw
+              </Button>
             </div>
           )}
 

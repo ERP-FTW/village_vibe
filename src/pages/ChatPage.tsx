@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { nip19 } from "nostr-tools";
 import { useSearchParams } from "react-router-dom";
 import { useSeoMeta } from '@unhead/react';
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -6,22 +6,35 @@ import { ConversationsList } from "@/components/chat/ConversationsList";
 import { ChatView } from "@/components/chat/ChatView";
 import { LoginArea } from "@/components/auth/LoginArea";
 import { Card, CardContent } from "@/components/ui/card";
-import { MessageCircle, Lock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { MessageCircle, Lock, ArrowLeft } from "lucide-react";
+
+/** `?with=` may be a hex pubkey, npub or nprofile; anything else is ignored. */
+function parsePartner(value: string | null): string | undefined {
+  if (!value) return undefined;
+  if (/^[0-9a-f]{64}$/.test(value)) return value;
+  try {
+    const decoded = nip19.decode(value);
+    if (decoded.type === 'npub') return decoded.data;
+    if (decoded.type === 'nprofile') return decoded.data.pubkey;
+  } catch {
+    // invalid identifier
+  }
+  return undefined;
+}
 
 const ChatPage = () => {
   const { user } = useCurrentUser();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedPubkey, setSelectedPubkey] = useState<string | undefined>(
-    searchParams.get('with') || undefined
-  );
+  // The open conversation lives in the URL, so back/forward and shared links work
+  const selectedPubkey = parsePartner(searchParams.get('with'));
 
   useSeoMeta({
-    title: 'Messages - Tribes',
-    description: 'Encrypted direct messages with tribe members.',
+    title: 'Messages - Village Vibe',
+    description: 'Private direct messages with tribe members.',
   });
 
   const handleSelectConversation = (pubkey: string) => {
-    setSelectedPubkey(pubkey);
     setSearchParams({ with: pubkey });
   };
 
@@ -61,8 +74,8 @@ const ChatPage = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Conversations List */}
-          <div className="lg:col-span-1">
+          {/* Conversations List (on small screens, hidden while a chat is open) */}
+          <div className={selectedPubkey ? "hidden lg:block lg:col-span-1" : "lg:col-span-1"}>
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <MessageCircle className="h-5 w-5" />
@@ -75,10 +88,16 @@ const ChatPage = () => {
             </div>
           </div>
 
-          {/* Chat View */}
-          <div className="lg:col-span-2">
+          {/* Chat View (on small screens, only while a chat is open) */}
+          <div className={selectedPubkey ? "lg:col-span-2 space-y-3" : "hidden lg:block lg:col-span-2"}>
             {selectedPubkey ? (
-              <ChatView otherUserPubkey={selectedPubkey} />
+              <>
+                <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setSearchParams({})}>
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  All conversations
+                </Button>
+                <ChatView otherUserPubkey={selectedPubkey} />
+              </>
             ) : (
               <Card className="h-[600px]">
                 <CardContent className="flex items-center justify-center h-full">

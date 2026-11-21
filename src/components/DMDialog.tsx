@@ -99,7 +99,7 @@ export function DMDialog({ recipientPubkey, recipientName, children }: DMDialogP
 
           <div className="bg-muted/50 p-3 rounded-lg">
             <p className="text-xs text-muted-foreground">
-              🔒 This message will be encrypted using NIP-04 and only visible to you and {recipientName}.
+              🔒 Only you and {recipientName} can read this message. It is sent as a private NIP-17 message when your signer supports it, otherwise as an encrypted NIP-04 message.
             </p>
           </div>
 

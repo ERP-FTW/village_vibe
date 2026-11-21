@@ -37,8 +37,9 @@ export function EventRolesTab({ event, canManage }: EventRolesTabProps) {
   const roles = data?.roles ?? [];
   const roleClaims = data?.roleClaims ?? [];
 
-  const openRoles = roles.filter(r => r.status === 'open');
-  const filledRoles = roles.filter(r => r.status === 'filled');
+  // Group by actual sign-ups: the role's own status tag is set once at creation.
+  const openRoles = roles.filter(r => r.status !== 'canceled' && r.filled < r.slots);
+  const filledRoles = roles.filter(r => r.status !== 'canceled' && r.filled >= r.slots);
 
   return (
     <div className="space-y-6">

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { extractServiceData } from '@/hooks/useServices';
+import { extractServiceData, usePromoteServiceToVillages } from '@/hooks/useServices';
+import { slugifyVillage } from '@/lib/villages';
 import {
   Dialog,
   DialogContent,
@@ -28,11 +29,12 @@ interface ServicePromotionDialogProps {
 export function ServicePromotionDialog({ children, service }: ServicePromotionDialogProps) {
   const { user } = useCurrentUser();
   const { toast } = useToast();
-  const { mutateAsync: publishEvent, isPending } = useNostrPublish();
-  
+  const { mutateAsync: publishEvent, isPending: isPublishing } = useNostrPublish();
+  const { mutateAsync: promote, isPending: isPromoting } = usePromoteServiceToVillages();
+  const isPending = isPublishing || isPromoting;
+
   const [open, setOpen] = useState(false);
   const [newVillage, setNewVillage] = useState('');
-  const [villages, setVillages] = useState<string[]>([]);
 
   const serviceData = extractServiceData(service);
   const serviceType = service.kind === 38857 ? 'offer' : 'request';
@@ -43,13 +45,18 @@ export function ServicePromotionDialog({ children, service }: ServicePromotionDi
     .map(([, value]) => value)
     .filter(Boolean);
 
-  // Initialize villages state with current villages
-  useState(() => {
-    setVillages(currentVillages);
-  });
+  const [villages, setVillages] = useState<string[]>(currentVillages);
+  // Only the author can rewrite the service's own village tags. Anyone else adds
+  // villages through a promotion label and cannot remove existing ones.
+  const isAuthor = user?.pubkey === service.pubkey;
+
+  const handleOpenChange = (next: boolean) => {
+    if (next) setVillages(currentVillages);
+    setOpen(next);
+  };
 
   const addVillage = () => {
-    const villageSlug = newVillage.trim().toLowerCase().replace(/\s+/g, '-');
+    const villageSlug = slugifyVillage(newVillage);
     if (villageSlug && !villages.includes(villageSlug)) {
       setVillages([...villages, villageSlug]);
       setNewVillage('');
@@ -71,25 +78,22 @@ export function ServicePromotionDialog({ children, service }: ServicePromotionDi
     }
 
     try {
-      // Create updated service with village tags
-      const dTag = service.tags.find(([name]) => name === 'd')?.[1];
-      if (!dTag) {
-        throw new Error('Service missing d tag');
+      if (isAuthor) {
+        await publishEvent({
+          kind: service.kind,
+          content: service.content,
+          tags: service.tags
+            .filter(([name]) => name !== 'village')
+            .concat(villages.map(village => ['village', village])),
+        });
+      } else {
+        const added = villages.filter(village => !currentVillages.includes(village));
+        if (!added.length) {
+          toast({ title: "No new villages", description: "Add at least one village to promote this service." });
+          return;
+        }
+        await promote({ service, villages: added });
       }
-
-      // Build new tags array, replacing village tags
-      const newTags = service.tags
-        .filter(([name]) => name !== 'village') // Remove existing village tags
-        .concat(villages.map(village => ['village', village])); // Add new village tags
-
-      const updatedService = {
-        kind: service.kind,
-        content: service.content,
-        tags: newTags,
-        created_at: Math.floor(Date.now() / 1000),
-      };
-
-      await publishEvent(updatedService);
       toast({
         title: "Service promoted",
         description: `Service is now visible in ${villages.length} village(s).`,
@@ -99,7 +103,7 @@ export function ServicePromotionDialog({ children, service }: ServicePromotionDi
       console.error('Service promotion error:', error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred.",
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
         variant: "destructive",
       });
     }
@@ -113,7 +117,7 @@ export function ServicePromotionDialog({ children, service }: ServicePromotionDi
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
@@ -157,14 +161,17 @@ export function ServicePromotionDialog({ children, service }: ServicePromotionDi
                     className="flex items-center gap-1 pr-1"
                   >
                     🏘️ {village}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={() => removeVillage(village)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
+                    {(isAuthor || !currentVillages.includes(village)) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                        onClick={() => removeVillage(village)}
+                        aria-label={`Remove ${village}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
                   </Badge>
                 ))}
               </div>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 // import { Badge } from "@/components/ui/badge";
 import QRCode from "qrcode";
 import { RefreshCw, QrCode, Users, CheckCircle } from "lucide-react";
+import { CHECK_IN_TRUST_NOTE, checkInTime } from '@/lib/attendance';
 
 interface EventCheckInProps {
   eventId: string;
@@ -18,7 +19,7 @@ export function EventCheckIn({ eventId, event }: EventCheckInProps) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [lastGenerated, setLastGenerated] = useState<Date | null>(null);
 
-  // Generate new QR code with rotating nonce (13 digit number)
+  // Generate a new 13-digit code for the QR (a convenience for entering it; never verified)
   const generateQRCode = async () => {
     // Generate 13-digit number: timestamp (10 digits) + random (3 digits)
     const timestamp = Math.floor(Date.now() / 1000); // 10 digits
@@ -95,7 +96,7 @@ export function EventCheckIn({ eventId, event }: EventCheckInProps) {
         <CardContent className="space-y-6">
           <div className="text-center space-y-4">
             <div className="text-sm text-muted-foreground">
-              Show this QR code to attendees for check-in
+              Show this QR code so attendees can check themselves in
             </div>
 
             {qrCodeUrl && (
@@ -139,12 +140,11 @@ export function EventCheckIn({ eventId, event }: EventCheckInProps) {
           <div className="p-4 bg-muted rounded-lg">
             <h4 className="font-semibold mb-2">Instructions:</h4>
             <ol className="text-sm space-y-1 list-decimal list-inside text-muted-foreground">
-              <li>Attendees scan this 13-digit QR code with any QR scanner</li>
-              <li>They enter the number in their Nostr client to check-in</li>
-              <li>This publishes an attendance verification event</li>
-              <li>Badges are automatically awarded after verification</li>
-              <li>QR code refreshes every 30 seconds for security</li>
+              <li>Attendees scan this QR code (or type its 13-digit number) on the event page</li>
+              <li>That publishes their own check-in, signed with their Nostr key</li>
+              <li>The code changes every 30 seconds, but older codes and made-up numbers aren't rejected: the QR is only a quick way to enter a code</li>
             </ol>
+            <p className="text-xs text-muted-foreground mt-2">{CHECK_IN_TRUST_NOTE}</p>
           </div>
         </CardContent>
       </Card>
@@ -164,7 +164,7 @@ export function EventCheckIn({ eventId, event }: EventCheckInProps) {
                 {uniqueAttendees.size}
               </div>
               <div className="text-sm text-muted-foreground">
-                Checked In
+                People checked in (self-reported)
               </div>
             </div>
 
@@ -173,7 +173,7 @@ export function EventCheckIn({ eventId, event }: EventCheckInProps) {
                 {attendanceRecords?.length || 0}
               </div>
               <div className="text-sm text-muted-foreground">
-                Total Scans
+                Check-ins published
               </div>
             </div>
           </div>
@@ -187,8 +187,6 @@ export function EventCheckIn({ eventId, event }: EventCheckInProps) {
                   .sort((a, b) => b.created_at - a.created_at)
                   .slice(0, 10)
                   .map((record) => {
-                    const verifiedAt = record.tags.find(([name]) => name === 'verified_at')?.[1];
-                    const _location = record.tags.find(([name]) => name === 'location')?.[1];
 
                     return (
                       <div key={record.id} className="flex items-center justify-between p-2 bg-muted rounded">
@@ -199,10 +197,7 @@ export function EventCheckIn({ eventId, event }: EventCheckInProps) {
                           </span>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {verifiedAt ?
-                            new Date(parseInt(verifiedAt) * 1000).toLocaleTimeString() :
-                            new Date(record.created_at * 1000).toLocaleTimeString()
-                          }
+                          {new Date(checkInTime(record) * 1000).toLocaleTimeString()}
                         </div>
                       </div>
                     );

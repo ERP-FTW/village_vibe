@@ -5,6 +5,7 @@ import { locationTags } from '@/lib/location';
 import { villageList } from '@/lib/villages';
 import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { latestRSVPs } from '@/lib/rsvp';
+import { isCheckIn } from '@/lib/attendance';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -162,7 +163,7 @@ export function useEventRSVPs(eventId: string) {
   });
 }
 
-// Hook to get attendance verifications for an event
+// Hook to get self-reported check-ins for an event
 export function useEventAttendance(eventId: string) {
   const { nostr } = useNostr();
 
@@ -176,7 +177,7 @@ export function useEventAttendance(eventId: string) {
 
       const events = await nostr.query([
         {
-          kinds: [2073], // Custom attendance verification kind
+          kinds: [2073], // Self-reported check-ins
           '#a': [`31923:${pubkey}:${dTag}`, `36959:${pubkey}:${dTag}`],
           limit: 200,
         }
@@ -623,17 +624,9 @@ export function validateEnhancedEvent(event: NostrEvent): boolean {
   return true;
 }
 
-// Validate attendance event structure
+// Validate attendance event structure (self-reported check-ins; see lib/attendance)
 export function validateAttendanceEvent(event: NostrEvent): boolean {
-  if (event.kind !== 2073) return false;
-
-  const aTag = event.tags.find(([name]) => name === 'a')?.[1];
-  const nonceTag = event.tags.find(([name]) => name === 'nonce')?.[1];
-  const verifiedAtTag = event.tags.find(([name]) => name === 'verified_at')?.[1];
-
-  if (!aTag || !nonceTag || !verifiedAtTag) return false;
-
-  return true;
+  return isCheckIn(event);
 }
 
 // Apply event filters

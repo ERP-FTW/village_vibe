@@ -213,7 +213,7 @@ export function ProfileView({ pubkey }: ProfileViewProps) {
               <div className="text-4xl mb-4">🏆</div>
               <h3 className="text-lg font-semibold mb-2">No badges yet</h3>
               <p className="text-muted-foreground">
-                Earn badges by attending tribe events!
+                Badges are awarded by tribe and event organizers.
               </p>
             </div>
           )}

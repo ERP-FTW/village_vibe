@@ -149,7 +149,7 @@ export function AboutPage() {
               <CardContent className="space-y-2 text-sm text-muted-foreground">
                 <p>Build reputation through participation and contributions.</p>
                 <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li>Attendance verification with QR codes</li>
+                  <li>Self-reported check-ins with the host's QR code</li>
                   <li>Event-specific badges</li>
                   <li>Tribe achievement recognition</li>
                   <li>Service reputation tracking</li>
@@ -534,7 +534,7 @@ export function AboutPage() {
               <ul className="list-disc list-inside space-y-1 ml-4 text-xs">
                 <li>Decentralized data storage on Nostr relays</li>
                 <li>Encrypted direct messages (NIP-04)</li>
-                <li>QR code check-ins for event attendance</li>
+                <li>Self-reported QR code check-ins (not proof of attendance)</li>
                 <li>Real-time updates with optimistic UI</li>
                 <li>Relay switching for content discovery</li>
                 <li>Mobile-responsive design</li>

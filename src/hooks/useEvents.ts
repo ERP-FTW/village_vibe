@@ -1,4 +1,5 @@
-import { useSendDirectMessage } from './useSendDirectMessage';
+import { useRetryDirectMessage, useSendDirectMessage } from './useSendDirectMessage';
+import { retryInvitations, sendInvitations, type InvitationOutcome } from '@/lib/invitations';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
 import { locationTags } from '@/lib/location';
@@ -453,7 +454,9 @@ export function useCreateEnhancedEvent() {
   });
 }
 
-// Hook to send private event details via DM
+export { invitationsComplete, type InvitationOutcome } from '@/lib/invitations';
+
+// Hook to send private event details via DM, reporting what reached whom
 export function useSendPrivateEventDetails() {
   const { mutateAsync: send } = useSendDirectMessage();
   return useMutation({
@@ -464,8 +467,8 @@ export function useSendPrivateEventDetails() {
       privateDetails: string;
       exactLocation?: string;
       organizer: string;
-    }) => {
-      const dmContent = `🔒 Private Event Details: ${data.eventTitle}
+    }): Promise<InvitationOutcome> => {
+      const message = `🔒 Private Event Details: ${data.eventTitle}
 
 ${data.privateDetails}
 
@@ -475,12 +478,17 @@ Event ID: ${data.eventId}
 Organizer: ${data.organizer}
 
 This is a private event. Please don't share these details publicly.`;
-
-      const sent = await Promise.allSettled([...new Set(data.invitees)].map(recipient =>
-        send({ recipient, message: dmContent })
-      ));
-      return sent.filter(outcome => outcome.status === 'rejected').length;
+      return sendInvitations(send, data.eventId, data.invitees, message);
     },
+  });
+}
+
+// Retry only the invitations (or the organizer's copies) that didn't go through
+export function useRetryInvitations() {
+  const { mutateAsync: send } = useSendDirectMessage();
+  const { mutateAsync: retry } = useRetryDirectMessage();
+  return useMutation({
+    mutationFn: (outcome: InvitationOutcome): Promise<InvitationOutcome> => retryInvitations(outcome, send, retry),
   });
 }
 

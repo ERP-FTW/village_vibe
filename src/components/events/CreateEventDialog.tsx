@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUploadFile } from "@/hooks/useUploadFile";
+import { PublicFieldsNotice } from "@/components/privacy/PublicFieldsNotice";
+import { EVENT_PUBLIC_FIELDS } from "@/lib/publicFields";
 import { InvitationRecovery } from "./InvitationRecovery";
 import { useCreateEnhancedEvent, useSendPrivateEventDetails, useRetryInvitations, invitationsComplete, type InvitationOutcome, type EventType, type EventVisibility, getEventTypeInfo, EVENT_TYPES } from "@/hooks/useEvents";
 import { usePublicTribes } from "@/hooks/useTribes";
@@ -552,7 +554,6 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
         visibility: formData.visibility,
         villages: formData.villages,
         invitees: formData.invitees,
-        privateDetails: formData.privateDetails.trim(),
         typeSpecificData,
       });
       if (formData.visibility === 'private' && formData.sendDMs && formData.invitees.length) {
@@ -821,13 +822,17 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
 
           {/* Location */}
           <div className="space-y-2">
-            <Label htmlFor="location">Location</Label>
+            <Label htmlFor="location">Location (public)</Label>
             <Input
               id="location"
               value={formData.place}
               onChange={(e) => setFormData(prev => ({ ...prev, place: e.target.value }))}
-              placeholder="e.g., Tech Hub Downtown, 123 Main St"
+              placeholder="e.g., Tech Hub Downtown"
+              aria-describedby="location-hint"
             />
+            <p id="location-hint" className="text-xs text-muted-foreground">
+              Anyone can read this. Share a home address or entry instructions by direct message instead.
+            </p>
           </div>
 
           {/* Image Upload */}
@@ -871,6 +876,8 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
               />
             </div>
           </div>
+
+          <PublicFieldsNotice subject="this event" fields={EVENT_PUBLIC_FIELDS} />
 
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">

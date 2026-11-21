@@ -1,4 +1,4 @@
-import type { NostrEvent } from '@nostrify/nostrify';
+import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { useNostr } from '@nostrify/react';
 import { useQuery } from '@tanstack/react-query';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -30,6 +30,38 @@ const RANDOMIZED_WINDOW_S = 3 * 24 * 60 * 60;
 const PAGE_SIZE = 300;
 const MAX_PAGES = 5;
 
+/** The query interface `readInboxWraps` needs (satisfied by the app's relay pool). */
+interface InboxQueryable {
+  query(filters: NostrFilter[], opts: { signal?: AbortSignal; relays?: string[] }): Promise<NostrEvent[]>;
+}
+
+/**
+ * Gift wraps addressed to `pubkey` on the given relays. Wrap timestamps are randomized up
+ * to two days into the past, so "newest N" is not "newest messages": this pages through
+ * the whole recent window, then reads one page of history. Relays hold different histories
+ * and each applies the limit on its own, so every relay is paged with its own cursor (a
+ * shared cursor would skip one relay's wraps). Fails only if no relay could be read.
+ */
+export async function readInboxWraps(nostr: InboxQueryable, pubkey: string, relays: string[], signal?: AbortSignal): Promise<NostrEvent[]> {
+  const since = Math.floor(Date.now() / 1000) - RANDOMIZED_WINDOW_S;
+  const readRelay = async (relay: string): Promise<NostrEvent[]> => {
+    const wraps: NostrEvent[] = [];
+    let until: number | undefined;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const batch = await nostr.query([{ kinds: [1059], '#p': [pubkey], since, limit: PAGE_SIZE, ...(until ? { until } : {}) }], { signal, relays: [relay] });
+      wraps.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
+      until = Math.min(...batch.map(wrap => wrap.created_at)) - 1;
+    }
+    wraps.push(...await nostr.query([{ kinds: [1059], '#p': [pubkey], until: since - 1, limit: PAGE_SIZE }], { signal, relays: [relay] }));
+    return wraps;
+  };
+  const results = await Promise.allSettled(relays.map(readRelay));
+  const fulfilled = results.filter((r): r is PromiseFulfilledResult<NostrEvent[]> => r.status === 'fulfilled');
+  if (!fulfilled.length && results.length) throw new Error('Could not reach any inbox relay.');
+  return [...new Map(fulfilled.flatMap(r => r.value).map(wrap => [wrap.id, wrap])).values()];
+}
+
 /**
  * All NIP-17 messages addressed to the current user (including copies of their own sent
  * messages), opened from kind 1059 gift wraps. Each wrap is only opened once per session.
@@ -54,18 +86,7 @@ export function useGiftWrappedInbox() {
         ...(inboxRelaysFrom(lists).get(user.pubkey) ?? []),
         ...readRelayUrls(config.relayUrl, presetRelays),
       ])];
-      // Wrap timestamps are randomized up to two days into the past, so "newest N" is not
-      // "newest messages": page through the whole recent window, then one page of history.
-      const since = Math.floor(Date.now() / 1000) - RANDOMIZED_WINDOW_S;
-      const wraps: NostrEvent[] = [];
-      let until: number | undefined;
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const batch = await nostr.query([{ kinds: [1059], '#p': [user.pubkey], since, limit: PAGE_SIZE, ...(until ? { until } : {}) }], { signal, relays });
-        wraps.push(...batch);
-        if (batch.length < PAGE_SIZE) break;
-        until = Math.min(...batch.map(wrap => wrap.created_at)) - 1;
-      }
-      wraps.push(...await nostr.query([{ kinds: [1059], '#p': [user.pubkey], until: since - 1, limit: PAGE_SIZE }], { signal, relays }));
+      const wraps = await readInboxWraps(nostr, user.pubkey, relays, signal);
 
       const rumors = await Promise.all(wraps.map(async (wrap) => {
         const key = `${user.pubkey}:${wrap.id}`;

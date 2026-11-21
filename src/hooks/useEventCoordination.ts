@@ -2,8 +2,8 @@ import { useNostrPublish } from './useNostrPublish';
 import { useCurrentUser } from './useCurrentUser';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import { useTribeName } from './useTribes';
-import { tribeModerators } from '@/lib/tribes';
+import { useTribe } from './useTribes';
+import { tribeMembers, tribeModerators } from '@/lib/tribes';
 import { useCallback, useMemo } from 'react';
 import type { NostrEvent } from '@nostrify/nostrify';
 
@@ -665,13 +665,19 @@ export function useEventCoordinationData(event: NostrEvent): UseQueryResult<Even
 }
 
 /**
- * Authors trusted to define an event's roles, items, tasks and outcomes: the organizer
- * and the moderators of the event's tribe.
+ * Authors trusted to define an event's roles, items, tasks and outcomes: the organizer,
+ * plus the moderators of the event's tribe when that tribe is identified by an
+ * author-qualified `a` coordinate (34550:<owner>:<d>) and the organizer is a member.
+ * A bare `tribe` d tag is ambiguous (anyone can publish a look-alike tribe), so it never
+ * grants moderator trust.
  */
 export function useCoordinationTrust(event: NostrEvent): ReadonlySet<string> {
-  const tribeTag = event.tags.find(([n]) => n === 'tribe')?.[1];
-  const { data: tribeInfo } = useTribeName(tribeTag, event.pubkey);
-  const moderatorsKey = tribeInfo ? tribeModerators(tribeInfo.tribe).sort().join(',') : '';
+  const coordinate = event.tags.find(([n, v]) => n === 'a' && v?.startsWith('34550:'))?.[1];
+  const tribeId = coordinate ? coordinate.slice('34550:'.length) : '';
+  const { data: tribe } = useTribe(tribeId);
+  const moderatorsKey = tribe && tribeMembers(tribe).has(event.pubkey)
+    ? tribeModerators(tribe).sort().join(',')
+    : '';
   return useMemo(
     () => new Set([event.pubkey, ...(moderatorsKey ? moderatorsKey.split(',') : [])]),
     [event.pubkey, moderatorsKey],

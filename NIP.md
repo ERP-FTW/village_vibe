@@ -296,10 +296,10 @@ Addressable event recording event results and impact.
 
 ### Coordination Trust Rules
 
-- Roles (38401), items (38403), actions (38405) and outcomes (38407) count only when authored by the event organizer or a moderator of the event's tribe.
+- Roles (38401), items (38403), actions (38405) and outcomes (38407) count only when authored by the event organizer or by a moderator of the event's tribe. The tribe must be named by the event's `a` coordinate (`34550:<owner>:<d>`), and the organizer must be a member of it. A bare `tribe` d tag never grants moderator trust.
 - Role and item claims (38402, 38404) use the d tag `claim-<role-or-item-id>-<claimer-pubkey>`, so each person has one claim per role or item. To withdraw, republish the claim with `["status", "withdrawn"]`.
 - Fills count distinct people with an active claim. Item totals sum each person's latest claim quantity.
-- An action update (38406) counts only when authored by the organizer, a tribe moderator, the action's creator or its assignee. The newest one wins.
+- An action update (38406) counts only when authored by the organizer, a trusted tribe moderator, the action's creator or its assignee. The newest one wins.
 
 ## Implementation Notes
 

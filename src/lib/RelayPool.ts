@@ -52,7 +52,11 @@ export class RelayPool extends NPool {
     const settleSoon = () => {
       if (!completed) return;
       if (events.size) {
-        if (grace === undefined) grace = setTimeout(() => stop.abort(), RELAY_GRACE_MS);
+        if (grace === undefined) {
+          // Matches arrived: the shorter match grace replaces any pending empty-result wait.
+          clearTimeout(emptyGrace);
+          grace = setTimeout(() => stop.abort(), RELAY_GRACE_MS);
+        }
       } else if (emptyGrace === undefined) {
         emptyGrace = setTimeout(() => stop.abort(), EMPTY_GRACE_MS);
       }

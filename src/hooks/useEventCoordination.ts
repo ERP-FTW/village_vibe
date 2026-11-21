@@ -301,7 +301,7 @@ export function useClaimItem() {
     }) => {
       if (!user) throw new Error('You must be logged in');
       // One claim per person per item: republishing replaces it (claim, update or withdraw).
-      const claimId = `claim-${data.itemId}-${user.pubkey}`;
+      const claimId = itemClaimId(data.itemId, user.pubkey);
 
       const tags: string[][] = [
         ['d', claimId],
@@ -574,11 +574,35 @@ function latestBy<T>(records: T[], key: (record: T) => string, time: (record: T)
   return [...latest.values()];
 }
 
+/** The canonical d-tag of a person's claim on an item; republishing it replaces the claim. */
+export function itemClaimId(itemId: string, pubkey: string): string {
+  return `claim-${itemId}-${pubkey}`;
+}
+
+/**
+ * Each person's current claims per item. A canonical claim (`claim-<item>-<pubkey>`) holds
+ * the person's running total and supersedes everything else they published for that item.
+ * Older clients published a new claim per submission carrying only the added quantity, so
+ * until a canonical claim exists those legacy claims are all kept and their quantities add up.
+ */
+function currentItemClaims(claims: ItemClaim[]): ItemClaim[] {
+  const byPerson = new Map<string, ItemClaim[]>();
+  for (const claim of latestBy(claims, c => `${c.claimedBy}:${c.id}`, c => c.claimedAt)) {
+    const key = `${claim.itemId}:${claim.claimedBy}`;
+    byPerson.set(key, [...(byPerson.get(key) ?? []), claim]);
+  }
+  return [...byPerson.values()].flatMap(group => {
+    const canonical = group.find(c => c.id === itemClaimId(c.itemId, c.claimedBy));
+    return canonical ? [canonical] : group;
+  });
+}
+
 /**
  * Apply trust and counting rules (pure, used as the query's `select`):
  * - roles, items, actions and outcomes count only when created by a trusted author
  *   (the event organizer or a moderator of its tribe);
- * - each person's latest claim per role/item wins (claims can be withdrawn), and
+ * - each person's latest claim per role wins (claims can be withdrawn); per item, the
+ *   person's canonical claim is their total, else their legacy incremental claims add up;
  *   only claims on trusted roles/items count; fills count distinct people;
  * - task status updates count only from trusted authors, the task's creator or
  *   its assignee, newest first.
@@ -592,7 +616,7 @@ export function deriveCoordination(raw: RawCoordination, trusted: ReadonlySet<st
   const roleIds = new Set(roles.map(r => r.id));
   const itemIds = new Set(items.map(i => i.id));
   const roleClaims = latestBy(raw.roleClaims.filter(c => roleIds.has(c.roleId)), c => `${c.roleId}:${c.claimedBy}`, c => c.claimedAt);
-  const itemClaims = latestBy(raw.itemClaims.filter(c => itemIds.has(c.itemId)), c => `${c.itemId}:${c.claimedBy}`, c => c.claimedAt);
+  const itemClaims = currentItemClaims(raw.itemClaims.filter(c => itemIds.has(c.itemId)));
 
   const roleFilled = new Map<string, number>();
   roleClaims.filter(c => c.status === 'active').forEach(c => roleFilled.set(c.roleId, (roleFilled.get(c.roleId) ?? 0) + 1));

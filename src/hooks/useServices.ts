@@ -266,6 +266,7 @@ export function useCreateService() {
 // Hook to promote a service to villages (creates label AND updates service with village tags)
 export function usePromoteServiceToVillages() {
   const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
   const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
@@ -321,7 +322,10 @@ export function usePromoteServiceToVillages() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      await publish(updatedService);
+      // Only the author can replace their own event; anyone else promoting it would
+      // publish a copy under their own key. The label alone carries the promotion.
+      const target = data.service;
+      if (user?.pubkey === target.pubkey) await publish(updatedService);
       await publish(promotionLabel);
       return {
         serviceId,

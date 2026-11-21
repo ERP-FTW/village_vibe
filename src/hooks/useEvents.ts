@@ -265,6 +265,7 @@ export function useVillageEvents(villageSlug: string, filters: EventFilters = {}
 // Hook to promote an event to villages (creates label AND updates event with village tags)
 export function usePromoteEventToVillages() {
   const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
   const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
@@ -320,7 +321,10 @@ export function usePromoteEventToVillages() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      await publish(updatedEvent);
+      // Only the author can replace their own event; anyone else promoting it would
+      // publish a copy under their own key. The label alone carries the promotion.
+      const target = data.event;
+      if (user?.pubkey === target.pubkey) await publish(updatedEvent);
       await publish(promotionLabel);
       return {
         eventId,

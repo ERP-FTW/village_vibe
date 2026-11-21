@@ -1,3 +1,4 @@
+import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
 import { useNostr } from '@nostrify/react';
@@ -280,6 +281,7 @@ export function useCreateStoryLabel() {
 // Hook to promote a story to villages (creates label AND updates story with village tags)
 export function usePromoteStoryToVillages() {
   const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
   const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
@@ -335,7 +337,10 @@ export function usePromoteStoryToVillages() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      await publish(updatedStory);
+      // Only the author can replace their own event; anyone else promoting it would
+      // publish a copy under their own key. The label alone carries the promotion.
+      const target = data.story;
+      if (user?.pubkey === target.pubkey) await publish(updatedStory);
       await publish(promotionLabel);
       return {
         storyId,

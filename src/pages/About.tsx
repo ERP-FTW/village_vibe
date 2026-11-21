@@ -38,7 +38,7 @@ export function AboutPage() {
               <LoginArea className="max-w-60" />
               <p className="text-sm text-muted-foreground">or</p>
               <Button asChild size="lg">
-                <Link to="/tribes">Browse Public Tribes</Link>
+                <Link to="/tribes">Browse Tribes</Link>
               </Button>
             </div>
           )}
@@ -167,11 +167,16 @@ export function AboutPage() {
               <CardContent className="space-y-2 text-sm text-muted-foreground">
                 <p>Communicate privately with other community members.</p>
                 <ul className="list-disc list-inside space-y-1 ml-2">
-                  <li>NIP-04 encrypted messaging</li>
+                  <li>NIP-17 encrypted messages (NIP-04 for older history and simpler signers)</li>
                   <li>Event coordination via DMs</li>
                   <li>Service negotiations</li>
-                  <li>Private event details</li>
+                  <li>Event details shared by encrypted message</li>
                 </ul>
+                <p>
+                  Direct messages are the only encrypted part of Village Vibe. Profiles, tribes (listed or
+                  unlisted), events, stories, services, RSVPs, check-ins and moderation labels are public on
+                  Nostr relays. NIP-04 messages also reveal who wrote to whom, and when.
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -519,7 +524,7 @@ export function AboutPage() {
               <h4 className="font-semibold text-foreground mb-2">Nostr Features</h4>
               <ul className="list-disc list-inside space-y-1 ml-4 text-xs">
                 <li>NIP-01: Basic protocol implementation</li>
-                <li>NIP-04: Encrypted direct messages</li>
+                <li>NIP-17 / NIP-44: Encrypted direct messages (NIP-04 for older history)</li>
                 <li>NIP-19: Bech32 identifiers (npub, naddr, nevent)</li>
                 <li>NIP-23: Long-form content (stories)</li>
                 <li>NIP-32: Labels and moderation</li>
@@ -533,7 +538,7 @@ export function AboutPage() {
               <h4 className="font-semibold text-foreground mb-2">Key Features</h4>
               <ul className="list-disc list-inside space-y-1 ml-4 text-xs">
                 <li>Decentralized data storage on Nostr relays</li>
-                <li>Encrypted direct messages (NIP-04)</li>
+                <li>Encrypted direct messages (NIP-17, with NIP-04 fallback)</li>
                 <li>QR code check-ins for event attendance</li>
                 <li>Real-time updates with optimistic UI</li>
                 <li>Relay switching for content discovery</li>
@@ -567,7 +572,7 @@ export function AboutPage() {
 
               <div className="text-center">
                 <Button asChild size="lg" variant="outline">
-                  <Link to="/tribes">Browse Public Tribes</Link>
+                  <Link to="/tribes">Browse Tribes</Link>
                 </Button>
               </div>
             </CardContent>

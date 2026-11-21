@@ -6,7 +6,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
 import { useVillagePreferences } from './useVillagePreferences';
 import { useTribe } from './useTribes';
-import { MAX_FEED_AUTHORS, tribeMemberAuthors } from '@/lib/tribes';
+import { MAX_FEED_AUTHORS, tribeMemberAuthors, tribeModerators } from '@/lib/tribes';
+import { dropHidden } from '@/lib/moderation';
 
 // Story filter options
 export interface StoryFilters {
@@ -46,7 +47,10 @@ export function useTribeStories(tribeId: string, filters: StoryFilters = {}) {
       // Any member can publish stories in their tribe.
       const tribe = tribeQuery.data ?? null;
       const authors = tribe ? tribeMemberAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
-      const records = await nostr.query([{ kinds: [30023], authors, limit: 200 }], { signal });
+      const moderators = tribe ? tribeModerators(tribe) : [pubkey];
+      const records = await dropHidden(nostr, await nostr.query([
+        { kinds: [30023], authors, limit: 200 },
+      ], { signal }), moderators, signal);
       const filteredEvents = records.filter(event =>
         event.tags.some(([name, value]) => name === 'tribe' && value === dTag));
 

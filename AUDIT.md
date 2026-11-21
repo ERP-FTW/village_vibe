@@ -13,6 +13,57 @@ Line numbers refer to commit `3433ddc`.
 
 ---
 
+## Status (updated 2026-11-21)
+
+**Fixed** on branch `claude/wizardly-ramanujan-bbqidj`: [PR #2](https://github.com/ERP-FTW/village_vibe/pull/2), merged after review, plus follow-up commits.
+
+| Area | What changed |
+|---|---|
+| §1 CI | `npm test` passes: tsc, eslint, 34 tests, build. Deploy runs the tests first. `npm ci` everywhere; scripts no longer run `npm i`. |
+| §2 Relay layer | `RelayPool`: returns 300 ms after the first relay completes with matches. Waits at most 2 s for a match after an empty answer. Errors only when no relay completed. Single 5 s budget, one retry. The health check probes only the selected relay, with no polling. |
+| §3 Publishing | Mutations sign and publish before showing success, then refresh the affected queries. DMs are encrypted. Drafts are kept on failure. |
+| §4a/b Tribe authority | Creator-only, read-latest-then-write tribe updates (`useUpdateTribe`). No more forks, lost approvals or duplicate members. `event_creator` role now works. Only moderator rejections count. |
+| §4a Promotion | Labels only, unless the promoter is the author. |
+| §4c Tribe feeds | Query the tribe's members instead of only the owner. No fallback to the owner's other tribes. |
+| §4d Hide labels | Honoured in tribe feeds when issued by the tribe's moderators. |
+| §5 Security/privacy | Plaintext admin DMs gone. Profile URLs restricted to http(s). NIP-58 badge issuer check. Private tribes hidden from Discover and from non-members' profile views. DM list crash fixed. Decrypted DMs cached. Zap requests fixed. `ProfileZapDialog` removed. |
+| §6 Broken features | Share links/QR use the real kind and a valid naddr. QR route fixed and `?tab=` honoured. NIP-19 profile/note/naddr views. `/t/:tag`. Check-ins on 36959. Venue and summary display. Create-event focus bug. Local dates. Author-aware tribe names. |
+| §7 UX | Mobile menu. Debug panels dev-only. Search filters locally. Preferences sync. Route code splitting: 801 KB main bundle, was 1.29 MB. 41 `console.log` calls removed. |
+| §8 Dead code | Dead files, barrels and unused hooks removed. |
+
+## Repair plan
+
+Each audit item is a separate PR. PRs 01–07 form a stack that merges in order into `almost`. Each later PR is based on the branch named in "Base", so after its base merges it retargets automatically.
+
+"Codex" marks the foundational PRs that get a requested Codex review (up to 5 fix rounds or until clean). Every other PR got Codex's automatic review when it was opened, and its findings were fixed the same way.
+
+| # | Audit § | PR | Base | Scope | Review and state |
+|---|---|---|---|---|---|
+| 01 | §1–3 | #3 | `almost` | CI gate, `RelayPool` reads, publish-before-confirm (Codex) | Clean at R2. Ready |
+| 02 | §4a–c | #4 | 01 | Tribe authority, membership writes, member content in tribe feeds (Codex) | Clean at R2. Ready |
+| 03 | §4a | #5 | 02 | Promotion via labels, not re-signed copies | Finding superseded by 09. Ready |
+| 04 | §6 | #6 | 03 | Share links, QR route, NIP-19 pages, event display | 2 findings fixed. Ready |
+| 05 | §5 | #7 | 04 | Profile URLs, badge issuers, zaps, DM list and decryption | Clean. Ready |
+| 06 | §7–8 | #8 | 05 | Mobile menu, synced preferences, code splitting, dev-only debug UI | Clean. Ready |
+| 07 | §4d | #9 | 06 | Honour moderators' hide labels | 2 findings fixed. Ready |
+| 08 | §4c | #10 | 07 | Indexed tag model: tribe `a` and village `t` tags on publish, dual read (Codex) | R1 finding fixed. Clean at R2, and again at R3 after upstream merges. Ready |
+| 09 | §4d | #11 | 08 | Village moderation: trusted promotion labels, tribe association, featured from labels (Codex) | R1–R2 findings fixed, clean at R3. Ready (village policy change: self-tagged content now needs tribe association or a moderator's promotion; owner sign-off) |
+| 10 | §6, §4d | #13 | 08 | Coordination integrity: trusted authors, per-person claims, distinct counts, roles tab, task status (Codex) | R1–R3 findings fixed, clean at R4. Ready |
+| 11 | §5, §6 | #12 | 07 | RSVP and check-in integrity: no host-signed RSVPs, negation-aware detection, latest RSVP per person | Clean. Ready |
+| 12 | §6 | #14 | 09 | Services: working responses, NIP-40 expiry, village slugs, main-feed preferences (Codex) | R1 findings fixed, clean at R2. Ready |
+| 13 | §5 | #15 | 07 | DMs: NIP-17 send/read with NIP-04 fallback (Codex) | R1–R4 findings fixed, clean at R5. Ready |
+| 14 | §6 | #16 | 07 | Story Markdown rendering | 1 finding fixed. Ready |
+| 15 | §7 | #19 | 07 | No hard-coded coordinates; optional geohash `g` tag | 2 findings fixed. Ready |
+| 16 | §7 | #18 | 07 | Batch per-card author and badge queries | 2 findings fixed. Ready |
+| 17 | §8 | #20 | 12 | Consolidate moderation dialogs; `DownloadNIP` from NIP.md | Clean. Ready. Discussion → `CommentsSection` not done (changes the data model: owner decision) |
+| 18 | §7 | #17 | 07 | Chat layout, URL sync and accessibility | 1 finding fixed. Ready |
+| 19 | §9 | #21 | 07 | README, NIP.md coverage, package name, archived notes | Clean. Ready |
+| 20 | §1 | #22 | 07 | Deploy workflow on the default branch `almost` | Draft: owner decision (deploy branch, Pages base path) |
+
+Not verifiable here: this environment blocks WebSocket connections to relays. Relay and publish behaviour was verified with simulated relays and a headless-browser smoke test.
+
+---
+
 ## Contents
 1. [Build and CI health](#1-build-and-ci-health)
 2. [Root cause of the slow or empty loads (the relay layer)](#2-root-cause-of-the-slow-or-empty-loads)

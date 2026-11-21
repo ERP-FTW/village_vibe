@@ -9,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { TribeAccessSettings } from "./TribeAccessSettings";
 import { useToast } from "@/hooks/useToast";
 import { Upload, Loader2, Settings } from "lucide-react";
 
@@ -209,33 +209,12 @@ export function EditTribeDialog({ children, tribe }: EditTribeDialogProps) {
           </div>
 
           {/* Settings */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Public Tribe</Label>
-                <p className="text-xs text-muted-foreground">
-                  Anyone can see and read this tribe
-                </p>
-              </div>
-              <Switch
-                checked={formData.isPublic}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isPublic: checked }))}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Open Membership</Label>
-                <p className="text-xs text-muted-foreground">
-                  Anyone can join without approval
-                </p>
-              </div>
-              <Switch
-                checked={formData.isOpen}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isOpen: checked }))}
-              />
-            </div>
-          </div>
+          <TribeAccessSettings
+            listed={formData.isPublic}
+            open={formData.isOpen}
+            onListedChange={(checked) => setFormData(prev => ({ ...prev, isPublic: checked }))}
+            onOpenChange={(checked) => setFormData(prev => ({ ...prev, isOpen: checked }))}
+          />
 
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">

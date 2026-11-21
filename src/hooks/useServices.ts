@@ -1,6 +1,7 @@
 import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -61,12 +62,16 @@ export function useTribeServices(tribeId: string, filters: ServiceFilters = {}) 
       const tribe = await queryClient.ensureQueryData(tribeQueryOptions(nostr, tribeId));
       const authors = tribe ? tribeMemberAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
       const moderators = tribe ? tribeModerators(tribe) : [pubkey];
+      const allowed = new Set(tribe ? tribeMemberAuthors(tribe) : [pubkey]);
       const records = withoutHidden(await nostr.query([
+        // Indexed: services tagged with the tribe coordinate
+        { kinds, '#a': [tribeCoordinate(tribeId)], limit: 200 },
+        // Legacy: services from before the indexed tag, found through their authors
         { kinds, authors, limit: 200 },
         tribeHiddenLabelsFilter(moderators),
       ], { signal }), moderators);
       const tribeEvents = records.filter(event =>
-        event.tags.some(([name, value]) => name === 'tribe' && value === dTag));
+        allowed.has(event.pubkey) && belongsToTribe(event.tags, tribeId));
 
       // Apply additional filters
       let filteredEvents = tribeEvents;
@@ -167,7 +172,8 @@ export function useCreateService() {
       // Build tags array
       const tags: string[][] = [
         ['d', dTag],
-        ['tribe', data.tribe],
+        // Indexed tribe coordinate plus the legacy d-tag reference
+        ...tribeLinkTags(data.tribe),
         ['t', data.category],
         ['l', `${data.lat.toFixed(4)},${data.lon.toFixed(4)}`], // Round for privacy
         ['alt', `Service ${data.type} for local community help`],
@@ -181,12 +187,8 @@ export function useCreateService() {
       if (data.radius) tags.push(['radius', data.radius]);
       if (data.expires) tags.push(['expires', data.expires.toString()]);
 
-      // Add village tags
-      if (data.villages && data.villages.length > 0) {
-        data.villages.forEach(village => {
-          tags.push(['village', village]);
-        });
-      }
+      // Add village tags (legacy + indexed)
+      tags.splice(0, tags.length, ...withVillageTags(tags, data.villages ?? []));
 
       // Create the event
       const eventData = {
@@ -224,15 +226,12 @@ export function usePromoteServiceToVillages() {
       const serviceId = `${service.pubkey}:${dTag}`;
 
       // Get existing village tags
-      const existingVillageTags = service.tags.filter(([name]) => name === 'village').map(([, value]) => value);
+      const existingVillageTags = villagesOf(service.tags);
       const newVillages = villages.filter(v => !existingVillageTags.includes(v));
       const allVillages = [...existingVillageTags, ...newVillages];
 
       // Create updated service with village tags
-      const updatedTags = [
-        ...service.tags.filter(([name]) => name !== 'village'), // Remove existing village tags
-        ...allVillages.map(village => ['village', village]), // Add all village tags
-      ];
+      const updatedTags = withVillageTags(service.tags, allVillages);
 
       const updatedService = {
         kind: service.kind,

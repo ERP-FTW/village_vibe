@@ -1,23 +1,50 @@
 import type { NostrEvent, NostrFilter, NPool } from '@nostrify/nostrify';
+import { VILLAGE_TOPIC, villageTopic, villagesOf } from '@/lib/contentTags';
+import { coordinateOf } from '@/lib/moderation';
 
-/** Read existing village tags and promotion labels without changing the wire format. */
+/**
+ * Read village content and promotion labels.
+ *
+ * Content is found through the indexed `t` village topics (see contentTags.ts),
+ * with the legacy multi-letter `#village` filter queried in parallel for older
+ * content. When that legacy filter is unavailable (or nothing matched), it also
+ * scans recent content so older posts keep appearing during the transition.
+ */
 export async function readVillageFeed(
   nostr: NPool, villages: string[], contentFilters: NostrFilter[], signal: AbortSignal,
 ) {
   const labels = { kinds: [1985], '#l': ['village-promoted'], limit: 100 };
-  const matchesVillage = (event: NostrEvent) => event.tags.some(
-    ([name, value]) => name === 'village' && (!villages.length || villages.includes(value)),
-  );
-  let records: NostrEvent[] = [];
-  if (villages.length) {
+  const matchesVillage = (event: NostrEvent) => {
+    const tagged = villagesOf(event.tags);
+    return tagged.length > 0 && (!villages.length || tagged.some(village => villages.includes(village)));
+  };
+  const topics = villages.length ? villages.map(villageTopic) : [VILLAGE_TOPIC];
+
+  const [indexed, legacy] = await Promise.allSettled([
+    nostr.query([...contentFilters.map(f => ({ ...f, '#t': topics })), labels], { signal }),
+    // Separate REQ: some relays reject the whole subscription for multi-letter tag filters.
+    villages.length
+      ? nostr.query(contentFilters.map(f => ({ ...f, '#village': villages })), { signal })
+      : Promise.resolve([] as NostrEvent[]),
+  ]);
+  signal.throwIfAborted();
+  if (indexed.status === 'rejected' && legacy.status === 'rejected') throw indexed.reason;
+
+  let records = [
+    ...(indexed.status === 'fulfilled' ? indexed.value : []),
+    ...(legacy.status === 'fulfilled' ? legacy.value : []),
+  ];
+  // Legacy content is only reachable through `#village`, which some relays reject, and
+  // the all-villages feed has no legacy filter at all: scan recent content in those cases
+  // (and whenever nothing matched) so content from before the indexed tags still shows.
+  const legacyUnavailable = !villages.length || legacy.status === 'rejected';
+  if (legacyUnavailable || !records.some(event => event.kind !== 1985 && matchesVillage(event))) {
     try {
-      records = await nostr.query([...contentFilters.map(f => ({ ...f, '#village': villages })), labels], { signal });
-    } catch {
-      signal.throwIfAborted(); // Relays may reject the legacy multi-letter filter.
+      records = [...records, ...await nostr.query([...contentFilters, labels], { signal })];
+    } catch (error) {
+      signal.throwIfAborted();
+      if (!records.length) throw error;
     }
-  }
-  if (!records.some(event => event.kind !== 1985 && matchesVillage(event))) {
-    records = await nostr.query([...contentFilters, labels], { signal });
   }
 
   const selected = records.filter(event => event.kind !== 1985 && matchesVillage(event));
@@ -27,8 +54,7 @@ export async function readVillageFeed(
     .flatMap(event => event.tags.filter(([name]) => name === 'a').map(([, address]) => address)));
   // One filter per kind+author keeps the REQ small (relays cap filters per subscription).
   const wanted = new Map<string, { kind: number; author: string; identifiers: Set<string> }>();
-  const present = new Set(selected.map(event =>
-    `${event.kind}:${event.pubkey}:${event.tags.find(([name]) => name === 'd')?.[1] ?? ''}`));
+  const present = new Set(selected.map(coordinateOf));
   for (const address of references) {
     if (!address || present.has(address)) continue;
     const [kind, author, ...identifier] = address.split(':');
@@ -50,5 +76,12 @@ export async function readVillageFeed(
       if (!selected.length) throw error;
     }
   }
-  return Array.from(new Map(selected.map(event => [event.id, event])).values());
+  // Results come from several requests: keep only the newest version of each address.
+  const newest = new Map<string, NostrEvent>();
+  for (const event of selected) {
+    const key = coordinateOf(event);
+    const current = newest.get(key);
+    if (!current || event.created_at > current.created_at) newest.set(key, event);
+  }
+  return [...newest.values()];
 }

@@ -48,9 +48,6 @@ export function CreateStoryDialog({
     lon: '',
   });
 
-  // Parse tribe data
-  const [, dTag] = tribeId.split(':');
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -74,7 +71,7 @@ export function CreateStoryDialog({
 
     try {
       createStory({
-        tribe: dTag,
+        tribe: tribeId,
         title: formData.title.trim(),
         summary: formData.summary.trim() || undefined,
         content: formData.content.trim(),

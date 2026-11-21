@@ -66,10 +66,10 @@ export async function wrapDirectMessage(
 }
 
 /** Structural check: a decrypted payload is only trusted once it has a rumor's shape. */
-function isRumor(value: unknown): value is Rumor {
+function isRumor(value: unknown): value is Omit<Rumor, 'id'> & { id?: unknown } {
   if (!value || typeof value !== 'object') return false;
   const r = value as Record<string, unknown>;
-  return typeof r.id === 'string'
+  return (r.id === undefined || typeof r.id === 'string')
     && typeof r.pubkey === 'string' && /^[0-9a-f]{64}$/.test(r.pubkey)
     && typeof r.created_at === 'number' && Number.isFinite(r.created_at)
     && typeof r.kind === 'number'
@@ -116,7 +116,13 @@ export async function unwrapDirectMessage(signer: Nip44Signer, wrap: NostrEvent)
     return null;
   }
   if (!isRumor(rumor) || rumor.kind !== 14 || rumor.pubkey !== seal.pubkey) return null;
-  return rumor;
+  // The id is what messages are de-duplicated by, so it must be the rumor's real hash: a
+  // sender-chosen id could otherwise replace a different message. Rumors without an id
+  // (allowed by some clients) get their hash.
+  const { pubkey, created_at, kind, tags, content } = rumor;
+  const id = getEventHash({ pubkey, created_at, kind, tags, content });
+  if (rumor.id !== undefined && rumor.id !== id) return null;
+  return { id, pubkey, created_at, kind, tags, content };
 }
 
 /** NIP-17 inbox relays (kind 10050 `relay` tags) per pubkey. */

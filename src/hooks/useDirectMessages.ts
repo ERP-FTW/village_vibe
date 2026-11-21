@@ -1,6 +1,7 @@
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { useNostr } from '@nostrify/react';
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { inboxRelaysFrom, SignerUnavailableError, supportsNip17, unwrapDirectMessage, type Rumor } from '@/lib/nip17';
 import { readRelayUrls } from '@/lib/RelayPool';
@@ -178,24 +179,26 @@ export function useDirectMessages(otherUserPubkey?: string) {
   });
 
   const me = user?.pubkey;
-  const giftWrapped: DecryptedMessage[] = me && otherUserPubkey
-    ? (inbox.data ?? [])
-      .filter(rumor => partnerOf(rumor, me) === otherUserPubkey)
-      .map(rumor => ({
-        id: rumor.id,
-        content: rumor.content,
-        created_at: rumor.created_at,
-        sender: rumor.pubkey,
-        recipient: rumor.pubkey === me ? otherUserPubkey : me,
-        isFromMe: rumor.pubkey === me,
-        protocol: 'nip17' as const,
-      }))
-    : [];
-
-  // Oldest first for chat display
-  const data = legacy.data || inbox.data
-    ? [...(legacy.data ?? []), ...giftWrapped].sort((a, b) => a.created_at - b.created_at)
-    : undefined;
+  // Merged only when either source changes: a new array on every render would retrigger
+  // effects that depend on the message list (e.g. scrolling to the newest message).
+  const data = useMemo(() => {
+    if (!legacy.data && !inbox.data) return undefined;
+    const giftWrapped: DecryptedMessage[] = me && otherUserPubkey
+      ? (inbox.data ?? [])
+        .filter(rumor => partnerOf(rumor, me) === otherUserPubkey)
+        .map(rumor => ({
+          id: rumor.id,
+          content: rumor.content,
+          created_at: rumor.created_at,
+          sender: rumor.pubkey,
+          recipient: rumor.pubkey === me ? otherUserPubkey : me,
+          isFromMe: rumor.pubkey === me,
+          protocol: 'nip17' as const,
+        }))
+      : [];
+    // Oldest first for chat display
+    return [...(legacy.data ?? []), ...giftWrapped].sort((a, b) => a.created_at - b.created_at);
+  }, [legacy.data, inbox.data, me, otherUserPubkey]);
 
   return {
     data,
@@ -239,18 +242,20 @@ export function useConversations() {
   });
 
   // Merge legacy and NIP-17 conversations, keeping each partner's latest message time
-  const latest = new Map<string, number>();
-  for (const { pubkey, lastMessageAt } of legacy.data ?? []) latest.set(pubkey, lastMessageAt);
-  if (user) {
-    for (const rumor of inbox.data ?? []) {
-      const partner = partnerOf(rumor, user.pubkey);
-      if (partner && rumor.created_at > (latest.get(partner) ?? 0)) latest.set(partner, rumor.created_at);
+  const me = user?.pubkey;
+  const data = useMemo(() => {
+    if (!legacy.data && !inbox.data) return undefined;
+    const latest = new Map<string, number>();
+    for (const { pubkey, lastMessageAt } of legacy.data ?? []) latest.set(pubkey, lastMessageAt);
+    if (me) {
+      for (const rumor of inbox.data ?? []) {
+        const partner = partnerOf(rumor, me);
+        if (partner && rumor.created_at > (latest.get(partner) ?? 0)) latest.set(partner, rumor.created_at);
+      }
     }
-  }
-  const data = legacy.data || inbox.data
-    ? Array.from(latest, ([pubkey, lastMessageAt]) => ({ pubkey, lastMessageAt }))
-      .sort((a, b) => b.lastMessageAt - a.lastMessageAt)
-    : undefined;
+    return Array.from(latest, ([pubkey, lastMessageAt]) => ({ pubkey, lastMessageAt }))
+      .sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  }, [legacy.data, inbox.data, me]);
 
   return {
     data,

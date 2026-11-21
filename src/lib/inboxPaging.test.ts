@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import {
-  historyComplete, MAX_RECENT_PAGES, mergeCursors, PAGE_SIZE, RANDOMIZED_WINDOW_S, readOlderWraps, readRecentWraps,
+  describeHistoryGaps, historyComplete, MAX_RECENT_PAGES, mergeCursors, PAGE_SIZE, RANDOMIZED_WINDOW_S, readOlderWraps, readRecentWraps,
   type InboxQueryable,
 } from './inboxPaging';
 
@@ -90,7 +90,7 @@ describe('reading the inbox', () => {
     const { nostr, calls } = fakeRelays({ A: [...sameSecond, ...older] });
 
     const read = await readRecentWraps(nostr, ME, ['A'], { now: NOW });
-    expect(read.cursors[0].gap).toBe('same-timestamp');
+    expect(read.cursors[0].skippedTimestamp).toBe(true);
     expect(calls.A).toBeLessThanOrEqual(MAX_RECENT_PAGES + 1);
     // Wraps below the crowded second are still read
     for (const event of older) expect(ids(read.wraps).has(event.id)).toBe(true);
@@ -183,7 +183,36 @@ describe('combining a refresh with older history read on request', () => {
     expect(historyComplete(mergeCursors([{ relay: 'A', nextUntil: SINCE - 1 }], [done]))).toBe(true);
   });
 
-  it('keeps a crowded-timestamp gap the refresh found', () => {
-    expect(mergeCursors([{ relay: 'A', nextUntil: SINCE - 1, gap: 'same-timestamp' }], [done])[0].gap).toBe('same-timestamp');
+  it('keeps a crowded timestamp the refresh found', () => {
+    expect(mergeCursors([{ relay: 'A', nextUntil: SINCE - 1, skippedTimestamp: true }], [done])[0].skippedTimestamp).toBe(true);
+  });
+
+  it('keeps a crowded timestamp older history found while the refresh is failing', () => {
+    const merged = mergeCursors([{ relay: 'A', gap: 'error', error: 'down' }], [{ relay: 'A', skippedTimestamp: true }]);
+    expect(merged[0]).toMatchObject({ gap: 'error', skippedTimestamp: true });
+  });
+});
+
+describe('a crowded older timestamp followed by a failed request', () => {
+  it('stays incomplete after the retry succeeds', async () => {
+    // 350 wraps share one second before the window: 50 of them can't be listed
+    const crowded = SINCE - 5000;
+    const sameSecond = Array.from({ length: PAGE_SIZE + 50 }, (_, i) => wrap(`same-${String(i).padStart(3, '0')}`, crowded));
+    // Older loads: 1st reaches the crowded second, 2nd skips it, 3rd fails, 4th succeeds empty
+    const { nostr } = fakeRelays({ A: sameSecond }, (_relay, call) => call === 3);
+
+    let read = await readOlderWraps(nostr, ME, [{ relay: 'A', nextUntil: SINCE - 1 }], []);
+    const seen = ids(read.wraps);
+    read = await readOlderWraps(nostr, ME, read.cursors, seen);
+    expect(read.cursors[0].skippedTimestamp).toBe(true);
+
+    read = await readOlderWraps(nostr, ME, read.cursors, seen);
+    expect(read.cursors[0]).toMatchObject({ gap: 'error', skippedTimestamp: true });
+
+    read = await readOlderWraps(nostr, ME, read.cursors, seen);
+    expect(read.wraps).toEqual([]);
+    expect(read.cursors[0]).toEqual({ relay: 'A', nextUntil: undefined, skippedTimestamp: true });
+    expect(historyComplete(read.cursors)).toBe(false);
+    expect(describeHistoryGaps(read.cursors)).toEqual([expect.stringContaining('more messages with one timestamp')]);
   });
 });

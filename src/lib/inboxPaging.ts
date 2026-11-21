@@ -19,14 +19,18 @@ export interface RelayCursor {
   /** Inclusive `until` to continue reading older wraps from; undefined once nothing older is left. */
   nextUntil?: number;
   /**
-   * Wraps this relay may have that weren't read:
+   * Reading stopped before the end (read pages are kept), and continuing can close it:
    * - 'page-limit': the per-refresh page budget ran out (continue with "load older"),
-   * - 'same-timestamp': more than a page of wraps share one timestamp, and a relay can't
-   *   page within a single second, so some at that second can't be listed,
-   * - 'error': a request failed (read pages are kept; continue to retry).
+   * - 'error': a request failed (continue to retry).
    */
-  gap?: 'page-limit' | 'same-timestamp' | 'error';
+  gap?: 'page-limit' | 'error';
   error?: string;
+  /**
+   * More than a page of wraps shared one timestamp, and a relay can't page within a single
+   * second, so some at that second couldn't be listed. Unlike `gap` this is a record of
+   * wraps that were passed over, not a place to continue from: no later read clears it.
+   */
+  skippedTimestamp?: true;
 }
 
 export interface InboxRead {
@@ -36,7 +40,7 @@ export interface InboxRead {
 
 /** True when every relay's history was read to the end with nothing skipped. */
 export function historyComplete(cursors: RelayCursor[]): boolean {
-  return cursors.every(cursor => cursor.nextUntil === undefined && !cursor.gap);
+  return cursors.every(cursor => cursor.nextUntil === undefined && !cursor.gap && !cursor.skippedTimestamp);
 }
 
 interface PageResult {
@@ -75,6 +79,7 @@ async function readPage(
 function failure(cursor: RelayCursor, error: unknown, signal?: AbortSignal): RelayCursor {
   // An explicit cancellation is not a relay failure: let it reach the caller
   signal?.throwIfAborted();
+  // Keeps `skippedTimestamp`: a failed request doesn't make passed-over wraps readable
   return { ...cursor, gap: 'error', error: error instanceof Error ? error.message : String(error) };
 }
 
@@ -102,7 +107,7 @@ export async function readRecentWraps(
       for (let page = 0; page < maxPages; page++) {
         const result = await readPage(nostr, pubkey, relay, seen, { since, until }, signal);
         result.fresh.forEach(wrap => wraps.set(wrap.id, wrap));
-        if (result.skippedTimestamp) cursor = { ...cursor, gap: 'same-timestamp' };
+        if (result.skippedTimestamp) cursor = { ...cursor, skippedTimestamp: true };
         if (result.nextUntil === undefined) {
           windowRead = true;
           cursor = { ...cursor, nextUntil: since - 1 };
@@ -111,7 +116,7 @@ export async function readRecentWraps(
         until = result.nextUntil;
         cursor = { ...cursor, nextUntil: until };
       }
-      if (!windowRead) return { ...cursor, gap: cursor.gap ?? 'page-limit' };
+      if (!windowRead) return { ...cursor, gap: 'page-limit' };
     } catch (error) {
       return failure({ ...cursor, nextUntil: until }, error, signal);
     }
@@ -131,8 +136,9 @@ async function readOlder(
   try {
     const result = await readPage(nostr, pubkey, cursor.relay, seen, { until: cursor.nextUntil }, signal);
     result.fresh.forEach(wrap => wraps.set(wrap.id, wrap));
-    const gap = result.skippedTimestamp ? 'same-timestamp' : cursor.gap === 'error' || cursor.gap === 'page-limit' ? undefined : cursor.gap;
-    return { ...cursor, nextUntil: result.nextUntil, gap, error: undefined };
+    // A successful read closes a retry gap, never an earlier skip
+    const next: RelayCursor = { relay: cursor.relay, nextUntil: result.nextUntil };
+    return cursor.skippedTimestamp || result.skippedTimestamp ? { ...next, skippedTimestamp: true } : next;
   } catch (error) {
     return failure(cursor, error, signal);
   }
@@ -156,15 +162,15 @@ export async function readOlderWraps(
  * older history loaded on request (which only ever extends beyond the window):
  * - a relay failing now, or a window the refresh couldn't read in full, is shown as is,
  *   since wraps can still arrive backdated anywhere in the window;
- * - otherwise the older-history cursor says how far back the relay has been read (keeping
- *   a crowded-timestamp gap the refresh found).
+ * - otherwise the older-history cursor says how far back the relay has been read.
+ * A crowded timestamp skipped by either read is kept either way.
  */
 export function mergeCursors(recent: RelayCursor[], older?: RelayCursor[]): RelayCursor[] {
   return recent.map(cursor => {
     const stored = older?.find(o => o.relay === cursor.relay);
-    if (!stored || cursor.gap === 'error' || cursor.gap === 'page-limit') return cursor;
-    if (cursor.gap === 'same-timestamp' && !stored.gap) return { ...stored, gap: 'same-timestamp' };
-    return stored;
+    if (!stored) return cursor;
+    const merged = cursor.gap === 'error' || cursor.gap === 'page-limit' ? cursor : stored;
+    return cursor.skippedTimestamp || stored.skippedTimestamp ? { ...merged, skippedTimestamp: true } : merged;
   });
 }
 
@@ -174,8 +180,8 @@ export function describeHistoryGaps(cursors: RelayCursor[]): string[] {
   for (const cursor of cursors) {
     const host = cursor.relay.replace(/^wss?:\/\//, '');
     if (cursor.gap === 'error') notes.push(`${host} didn't respond (${cursor.error ?? 'error'}).`);
-    else if (cursor.gap === 'same-timestamp') notes.push(`${host} has more messages with one timestamp than it can list; some may be missing.`);
     else if (cursor.gap === 'page-limit') notes.push(`Only part of the last few days was read from ${host}.`);
+    if (cursor.skippedTimestamp) notes.push(`${host} has more messages with one timestamp than it can list; some may be missing.`);
   }
   return notes;
 }

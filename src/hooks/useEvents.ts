@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
 import { useVillagePreferences } from './useVillagePreferences';
 import { useCurrentUser } from './useCurrentUser';
-import { tribeQueryOptions } from './useTribes';
+import { useTribe } from './useTribes';
 import { MAX_FEED_AUTHORS, tribeEventAuthors, tribeModerators } from '@/lib/tribes';
 import { tribeHiddenLabelsFilter, withoutHidden } from '@/lib/moderation';
 
@@ -55,13 +55,16 @@ export interface EventFilters {
 export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
-  const queryClient = useQueryClient();
+  // Feed authors come from the tribe's member list: refetch whenever that definition changes.
+  const tribeQuery = useTribe(tribeId);
+  const tribeVersion = tribeQuery.data?.id ?? null;
 
   const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['tribe-events', tribeId, queryFilters, user?.pubkey],
+    queryKey: ['tribe-events', tribeId, tribeVersion, queryFilters, user?.pubkey],
     select: (events: NostrEvent[]) => applyEventFilters(events, { search }),
     staleTime: 60000, // Cache for 1 minute
+    enabled: tribeQuery.isFetched,
     queryFn: async (c) => {
       const { signal } = c;
 
@@ -70,7 +73,7 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
       if (!pubkey || !dTag) return [];
 
       // Events can be created by the owner, admins, moderators and event creators.
-      const tribe = await queryClient.ensureQueryData(tribeQueryOptions(nostr, tribeId));
+      const tribe = tribeQuery.data ?? null;
       const authors = tribe ? tribeEventAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
 
       const allowed = new Set(tribe ? tribeEventAuthors(tribe) : [pubkey]);

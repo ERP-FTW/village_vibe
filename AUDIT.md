@@ -33,32 +33,32 @@ Line numbers refer to commit `3433ddc`.
 
 ## Repair plan
 
-Each audit item is a separate PR. **Done** PRs form a stack that merges in order into `almost`. **Planned** PRs branch from the top of that stack.
+Each audit item is a separate PR. PRs 01–07 form a stack that merges in order into `almost`. Each later PR is based on the branch named in "Base", so after its base merges it retargets automatically.
 
-"Codex" marks the foundational PRs that get a Codex review (up to 5 fix rounds or until green).
+"Codex" marks the foundational PRs that get a requested Codex review (up to 5 fix rounds or until clean). Every other PR got Codex's automatic review when it was opened, and its findings were fixed the same way.
 
-| # | Audit § | PR | Scope | State |
-|---|---|---|---|---|
-| 01 | §1–3 | #3 | CI gate, `RelayPool` reads, publish-before-confirm (Codex) | Done |
-| 02 | §4a–c | #4 | Tribe authority, membership writes, member content in tribe feeds (Codex) | Done |
-| 03 | §4a | #5 | Promotion via labels, not re-signed copies | Done |
-| 04 | §6 | #6 | Share links, QR route, NIP-19 pages, event display | Done |
-| 05 | §5 | #7 | Profile URLs, badge issuers, zaps, DM list and decryption | Done |
-| 06 | §7–8 | #8 | Mobile menu, synced preferences, code splitting, dev-only debug UI | Done |
-| 07 | §4d | #9 | Honour moderators' hide labels | Done |
-| 08 | §4c | | Indexed tag model: tribe `a` + single-letter village tag on publish, dual read (Codex) | Planned |
-| 09 | §4d | | Village moderation: only tribe moderators' promotion labels, scoped by village; featured from labels; self-tagged village content needs tribe association (Codex) | Planned |
-| 10 | §6, §4d | | Coordination integrity: trusted authors, deterministic claims, distinct counts, roles tab, task status | Planned |
-| 11 | §5, §6 | | RSVP and check-in integrity: no host-signed RSVPs, negation-aware detection, latest RSVP per person, honest check-in copy | Planned |
-| 12 | §6 | | Services: match schema, show matches, NIP-40 expiry, village slugs, main-feed preferences | Planned |
-| 13 | §5 | | DMs: NIP-17 send/read with NIP-04 fallback (Codex) | Planned |
-| 14 | §6 | | Story Markdown rendering | Planned |
-| 15 | §7 | | Remove hard-coded coordinates / `l` misuse | Planned |
-| 16 | §7 | | Batch per-card author/badge/zap queries | Planned |
-| 17 | §8 | | Consolidate moderation dialogs, discussion → `CommentsSection`, `DownloadNIP` from NIP.md | Planned |
-| 18 | §7 | | Chat layout and accessibility | Planned |
-| 19 | §9 | | NIP.md completeness, README, stale docs, package name | Planned |
-| 20 | §1 | | Deploy workflow targets `main` but the default branch is `almost` (needs owner decision) | Planned |
+| # | Audit § | PR | Base | Scope | Review and state |
+|---|---|---|---|---|---|
+| 01 | §1–3 | #3 | `almost` | CI gate, `RelayPool` reads, publish-before-confirm (Codex) | Clean at R2. Ready |
+| 02 | §4a–c | #4 | 01 | Tribe authority, membership writes, member content in tribe feeds (Codex) | Clean at R2. Ready |
+| 03 | §4a | #5 | 02 | Promotion via labels, not re-signed copies | Finding superseded by 09. Ready |
+| 04 | §6 | #6 | 03 | Share links, QR route, NIP-19 pages, event display | 2 findings fixed. Ready |
+| 05 | §5 | #7 | 04 | Profile URLs, badge issuers, zaps, DM list and decryption | Clean. Ready |
+| 06 | §7–8 | #8 | 05 | Mobile menu, synced preferences, code splitting, dev-only debug UI | Clean. Ready |
+| 07 | §4d | #9 | 06 | Honour moderators' hide labels | 2 findings fixed. Ready |
+| 08 | §4c | #10 | 07 | Indexed tag model: tribe `a` and village `t` tags on publish, dual read (Codex) | R1 finding fixed, clean at R2. R3 after upstream merges |
+| 09 | §4d | #11 | 08 | Village moderation: trusted promotion labels, tribe association, featured from labels (Codex) | R1–R2 findings fixed, clean at R3. Ready (village policy change: self-tagged content now needs tribe association or a moderator's promotion; owner sign-off) |
+| 10 | §6, §4d | #13 | 08 | Coordination integrity: trusted authors, per-person claims, distinct counts, roles tab, task status (Codex) | R1–R3 findings fixed. R4 pending |
+| 11 | §5, §6 | #12 | 07 | RSVP and check-in integrity: no host-signed RSVPs, negation-aware detection, latest RSVP per person | Clean. Ready |
+| 12 | §6 | #14 | 09 | Services: working responses, NIP-40 expiry, village slugs, main-feed preferences (Codex) | R1 findings fixed, clean at R2. Ready |
+| 13 | §5 | #15 | 07 | DMs: NIP-17 send/read with NIP-04 fallback (Codex) | R1–R3 findings fixed. R4 pending |
+| 14 | §6 | #16 | 07 | Story Markdown rendering | 1 finding fixed. Ready |
+| 15 | §7 | #19 | 07 | No hard-coded coordinates; optional geohash `g` tag | 2 findings fixed. Ready |
+| 16 | §7 | #18 | 07 | Batch per-card author and badge queries | 2 findings fixed. Ready |
+| 17 | §8 | #20 | 12 | Consolidate moderation dialogs; `DownloadNIP` from NIP.md | Clean. Ready. Discussion → `CommentsSection` not done (changes the data model: owner decision) |
+| 18 | §7 | #17 | 07 | Chat layout, URL sync and accessibility | 1 finding fixed. Ready |
+| 19 | §9 | #21 | 07 | README, NIP.md coverage, package name, archived notes | Clean. Ready |
+| 20 | §1 | #22 | 07 | Deploy workflow on the default branch `almost` | Draft: owner decision (deploy branch, Pages base path) |
 
 Not verifiable here: this environment blocks WebSocket connections to relays. Relay and publish behaviour was verified with simulated relays and a headless-browser smoke test.
 

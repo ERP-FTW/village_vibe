@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { NostrEvent, NPool, NRelay1 } from '@nostrify/nostrify';
 import { NostrContext } from '@nostrify/react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RelayPool, readRelayUrls } from '@/lib/RelayPool';
 import { useAppContext } from '@/hooks/useAppContext';
 
@@ -18,10 +19,15 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
   // Use refs so the pool always has the latest data
   const relayUrl = useRef<string>(config.relayUrl);
 
-  // Update refs when config changes
+  const queryClient = useQueryClient();
+
+  // Update refs when config changes; after a relay switch, refetch active queries so
+  // pages showing "not found" or an empty list can recover from the new relay.
   useEffect(() => {
+    if (relayUrl.current === config.relayUrl) return;
     relayUrl.current = config.relayUrl;
-  }, [config.relayUrl]);
+    void queryClient.invalidateQueries();
+  }, [config.relayUrl, queryClient]);
 
   // Initialize NPool only once
   if (!pool.current) {

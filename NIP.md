@@ -24,6 +24,36 @@ Events (36959, 31923), stories (30023) and services (38857, 30627) are linked to
 - Villages have no owners: any tribe creator can associate a tribe with a village. Readers can hide tribes from their village feed.
 - Content from before the indexed tags is found through its authors (tribe feeds) or the legacy `village` tag (village feeds).
 
+## Services (Custom Kinds 38857, 30627, 34871)
+
+### Service Offers (38857) and Requests (30627)
+
+Addressable events. Content is the human-readable description.
+
+| Tag | Required | Meaning |
+|---|---|---|
+| `["d", "<id>"]` | yes | Identifier |
+| `["t", "<category>"]` | yes | One of `yardwork`, `pets`, `eldercare`, `errands`, `oddjobs` (first `t` tag) |
+| `["tribe", "<tribe-d-tag>"]`, `["a", "34550:<owner>:<d>"]` | yes | Tribe link (see "Linking Content to Tribes and Villages") |
+| `["l", "<lat>,<lon>"]` | yes | Approximate location, rounded to 4 decimals |
+| `["area", …]`, `["avail", …]`, `["time", …]`, `["rate", …]`, `["radius", …]` | no | Free-text details |
+| `["expiration", "<unix>"]` | no | NIP-40 expiry; relays may drop the event after this time. Clients hide expired services, and also honour the legacy `["expires", "<unix>"]` tag. |
+| `["village", "<slug>"]`, `["t", "village-<slug>"]` | no | Village links |
+| `["alt", …]` | yes | NIP-31 description |
+
+### Service Responses (34871)
+
+Published when someone responds to a service ("I need this" or "I can help"), or when an admin suggests a match.
+
+| Tag | Required | Meaning |
+|---|---|---|
+| `["d", "match-<sorted service addresses joined by \|>-<responder pubkey>"]` | yes | One response per person per service pairing; responding again replaces it |
+| `["type", "offer_to_request" \| "request_to_offer" \| "admin_suggestion"]` | yes | Kind of response |
+| `["a", "<kind>:<pubkey>:<d>"]` | yes | The service(s) responded to |
+| `["p", "<service author pubkey>"]` | yes | Notifies the author(s) of the referenced services |
+| `["by", "<responder pubkey>"]` | yes | Responder (equals the event pubkey) |
+| `["alt", …]` | yes | NIP-31 description |
+
 ## Stories (NIP-23 Extension)
 
 Village Vibe uses **kind 30023** (Long-form Content from NIP-23) for community stories with the following extensions:

@@ -5,7 +5,8 @@ import { villageList } from '@/lib/villages';
 import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { NostrEvent } from '@nostrify/nostrify';
+import type { NostrEvent, NStore } from '@nostrify/nostrify';
+import { batcherPerStore, createBatcher } from '@/lib/batcher';
 import { useVillagePreferences } from './useVillagePreferences';
 import { useTribe } from './useTribes';
 import { MAX_FEED_AUTHORS, tribeMemberAuthors, tribeModerators } from '@/lib/tribes';
@@ -360,6 +361,20 @@ export function useCreateServiceLabel() {
   });
 }
 
+/** Response lookups for many service cards are merged into one request. */
+const responseLoader = batcherPerStore((nostr: NStore) => createBatcher<string, NostrEvent[]>(async (coordinates) => {
+  const wanted = new Set(coordinates);
+  const matches = (await nostr.query([{ kinds: [34871], '#a': coordinates, limit: coordinates.length * 50 }]))
+    .filter(validateServiceMatchEvent);
+  const byService = new Map<string, NostrEvent[]>(coordinates.map(coordinate => [coordinate, []]));
+  for (const match of matches) {
+    for (const [name, address] of match.tags) {
+      if (name === 'a' && wanted.has(address)) byService.get(address)?.push(match);
+    }
+  }
+  return byService;
+}));
+
 /** Responses (kind 34871 matches) to a service, one per responder (latest). */
 export function useServiceMatches(service: NostrEvent | undefined, enabled = true) {
   const { nostr } = useNostr();
@@ -368,9 +383,8 @@ export function useServiceMatches(service: NostrEvent | undefined, enabled = tru
   return useQuery({
     queryKey: ['service-matches', coordinate.split(':').slice(1).join(':')],
     enabled: enabled && !!coordinate,
-    queryFn: async ({ signal }) => {
-      const matches = (await nostr.query([{ kinds: [34871], '#a': [coordinate], limit: 100 }], { signal }))
-        .filter(validateServiceMatchEvent);
+    queryFn: async () => {
+      const matches = (await responseLoader(nostr)(coordinate)) ?? [];
       const latest = new Map<string, NostrEvent>();
       for (const match of matches) {
         const current = latest.get(match.pubkey);

@@ -46,12 +46,12 @@ Each audit item is a separate PR. PRs 01–07 form a stack that merges in order 
 | 05 | §5 | #7 | 04 | Profile URLs, badge issuers, zaps, DM list and decryption | Clean. Ready |
 | 06 | §7–8 | #8 | 05 | Mobile menu, synced preferences, code splitting, dev-only debug UI | Clean. Ready |
 | 07 | §4d | #9 | 06 | Honour moderators' hide labels | 2 findings fixed. Ready |
-| 08 | §4c | #10 | 07 | Indexed tag model: tribe `a` and village `t` tags on publish, dual read (Codex) | R1 finding fixed, clean at R2. R3 after upstream merges |
+| 08 | §4c | #10 | 07 | Indexed tag model: tribe `a` and village `t` tags on publish, dual read (Codex) | R1 finding fixed. Clean at R2, and again at R3 after upstream merges. Ready |
 | 09 | §4d | #11 | 08 | Village moderation: trusted promotion labels, tribe association, featured from labels (Codex) | R1–R2 findings fixed, clean at R3. Ready (village policy change: self-tagged content now needs tribe association or a moderator's promotion; owner sign-off) |
-| 10 | §6, §4d | #13 | 08 | Coordination integrity: trusted authors, per-person claims, distinct counts, roles tab, task status (Codex) | R1–R3 findings fixed. R4 pending |
+| 10 | §6, §4d | #13 | 08 | Coordination integrity: trusted authors, per-person claims, distinct counts, roles tab, task status (Codex) | R1–R3 findings fixed, clean at R4. Ready |
 | 11 | §5, §6 | #12 | 07 | RSVP and check-in integrity: no host-signed RSVPs, negation-aware detection, latest RSVP per person | Clean. Ready |
 | 12 | §6 | #14 | 09 | Services: working responses, NIP-40 expiry, village slugs, main-feed preferences (Codex) | R1 findings fixed, clean at R2. Ready |
-| 13 | §5 | #15 | 07 | DMs: NIP-17 send/read with NIP-04 fallback (Codex) | R1–R3 findings fixed. R4 pending |
+| 13 | §5 | #15 | 07 | DMs: NIP-17 send/read with NIP-04 fallback (Codex) | R1–R4 findings fixed, clean at R5. Ready |
 | 14 | §6 | #16 | 07 | Story Markdown rendering | 1 finding fixed. Ready |
 | 15 | §7 | #19 | 07 | No hard-coded coordinates; optional geohash `g` tag | 2 findings fixed. Ready |
 | 16 | §7 | #18 | 07 | Batch per-card author and badge queries | 2 findings fixed. Ready |

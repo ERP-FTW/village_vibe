@@ -5,7 +5,7 @@ import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
 import { useVillagePreferences } from './useVillagePreferences';
-import { tribeQueryOptions } from './useTribes';
+import { useTribe } from './useTribes';
 import { MAX_FEED_AUTHORS, tribeMemberAuthors, tribeModerators } from '@/lib/tribes';
 import { tribeHiddenLabelsFilter, withoutHidden } from '@/lib/moderation';
 
@@ -38,13 +38,16 @@ export interface ServiceFilters {
 // Hook to get services for a specific tribe
 export function useTribeServices(tribeId: string, filters: ServiceFilters = {}) {
   const { nostr } = useNostr();
-  const queryClient = useQueryClient();
+  // Feed authors come from the tribe's member list: refetch whenever that definition changes.
+  const tribeQuery = useTribe(tribeId);
+  const tribeVersion = tribeQuery.data?.id ?? null;
 
   const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['tribe-services', tribeId, queryFilters],
+    queryKey: ['tribe-services', tribeId, tribeVersion, queryFilters],
     select: (events: NostrEvent[]) => search ? events.filter(event => event.content.toLowerCase().includes(search.toLowerCase())) : events,
     staleTime: 30000, // Consider data fresh for 30 seconds
+    enabled: tribeQuery.isFetched,
     queryFn: async (c) => {
       const { signal } = c;
 
@@ -58,7 +61,7 @@ export function useTribeServices(tribeId: string, filters: ServiceFilters = {}) 
       if (!filters.type || filters.type === 'request') kinds.push(30627);
 
       // Any member can offer or request services in their tribe.
-      const tribe = await queryClient.ensureQueryData(tribeQueryOptions(nostr, tribeId));
+      const tribe = tribeQuery.data ?? null;
       const authors = tribe ? tribeMemberAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
       const moderators = tribe ? tribeModerators(tribe) : [pubkey];
       const records = withoutHidden(await nostr.query([

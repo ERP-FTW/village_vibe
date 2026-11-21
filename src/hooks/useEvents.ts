@@ -60,8 +60,6 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
     queryKey: ['tribe-events', tribeId, queryFilters, user?.pubkey],
     select: (events: NostrEvent[]) => applyEventFilters(events, { search }),
     staleTime: 60000, // Cache for 1 minute
-    retry: 3, // Retry 3 times on failure
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
     queryFn: async (c) => {
       const { signal } = c;
 
@@ -228,7 +226,6 @@ export function useVillageEvents(villageSlug: string, filters: EventFilters = {}
     queryFn: async (c) => {
       const { signal } = c;
 
-      console.log('🏘️ Querying village events for:', villageSlug);
 
       const villageEvents = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
         [{ kinds: [36959], limit: filters.limit || 150 }, { kinds: [31923], limit: 50 }], signal);
@@ -237,7 +234,6 @@ export function useVillageEvents(villageSlug: string, filters: EventFilters = {}
       const validEvents = villageEvents.filter(event =>
         event.kind === 36959 ? validateEnhancedEvent(event) : validateCalendarEvent(event)
       );
-      console.log('✅ Valid village events after all strategies:', validEvents.length);
 
       let filteredEvents = applyEventFilters(validEvents, queryFilters, user?.pubkey);
 
@@ -247,7 +243,6 @@ export function useVillageEvents(villageSlug: string, filters: EventFilters = {}
         return !tribeTag || !preferences.hiddenTribes.includes(tribeTag);
       });
 
-      console.log('🚫 After filtering hidden tribes:', filteredEvents.length);
 
       // Sort by start time (upcoming events first)
       return filteredEvents.sort((a, b) => {
@@ -577,7 +572,6 @@ export function validateRSVPEvent(event: NostrEvent): boolean {
 // Validate enhanced event structure
 export function validateEnhancedEvent(event: NostrEvent): boolean {
   if (event.kind !== 36959) {
-    console.log('❌ Validation failed: wrong kind', event.kind);
     return false;
   }
 
@@ -590,51 +584,23 @@ export function validateEnhancedEvent(event: NostrEvent): boolean {
 
   // Required tags
   if (!dTag || !tribeTag || !titleTag || !startTag || !placeTag || !locationTag) {
-    console.log('❌ Validation failed: missing required tags', {
-      eventId: event.id.slice(0, 8),
-      title: titleTag,
-      hasDTag: !!dTag,
-      hasTribe: !!tribeTag,
-      hasTitle: !!titleTag,
-      hasStart: !!startTag,
-      hasPlace: !!placeTag,
-      hasLocation: !!locationTag,
-    });
     return false;
   }
 
   // Validate start timestamp
   const timestamp = parseInt(startTag);
   if (isNaN(timestamp) || timestamp <= 0) {
-    console.log('❌ Validation failed: invalid timestamp', {
-      eventId: event.id.slice(0, 8),
-      title: titleTag,
-      startTag,
-      timestamp,
-    });
     return false;
   }
 
   // Validate location format (lat,lon)
   const locationParts = locationTag.split(',');
   if (locationParts.length !== 2) {
-    console.log('❌ Validation failed: invalid location format', {
-      eventId: event.id.slice(0, 8),
-      title: titleTag,
-      locationTag,
-      parts: locationParts.length,
-    });
     return false;
   }
 
   const [lat, lon] = locationParts.map(Number);
   if (isNaN(lat) || isNaN(lon)) {
-    console.log('❌ Validation failed: location not numbers', {
-      eventId: event.id.slice(0, 8),
-      title: titleTag,
-      lat,
-      lon,
-    });
     return false;
   }
 
@@ -654,18 +620,9 @@ export function validateEnhancedEvent(event: NostrEvent): boolean {
 
   // Validate content length (increased to 2000 for detailed descriptions)
   if (event.content.length > 2000) {
-    console.log('❌ Validation failed: content too long', {
-      eventId: event.id.slice(0, 8),
-      title: titleTag,
-      contentLength: event.content.length,
-    });
     return false;
   }
 
-  console.log('✅ Validation passed:', {
-    eventId: event.id.slice(0, 8),
-    title: titleTag,
-  });
 
   return true;
 }
@@ -755,57 +712,6 @@ export function applyEventFilters(
   }
 
   return filteredEvents;
-}
-
-// Helper function to extract enhanced event data
-export function extractEnhancedEventData(event: NostrEvent) {
-  const tags = event.tags;
-  const getTag = (name: string) => tags.find(([n]) => n === name)?.[1];
-  const getAllTags = (name: string) => tags.filter(([n]) => n === name).map(([, value]) => value);
-
-  return {
-    id: event.id,
-    pubkey: event.pubkey,
-    kind: event.kind,
-    content: event.content,
-    createdAt: event.created_at,
-    dTag: getTag('d'),
-    tribe: getTag('tribe'),
-    title: getTag('title'),
-    start: getTag('start') ? parseInt(getTag('start')!) : undefined,
-    end: getTag('end') ? parseInt(getTag('end')!) : undefined,
-    place: getTag('place'),
-    location: getTag('l'),
-    visibility: getTag('visibility') as EventVisibility || 'public',
-    villages: getAllTags('village'),
-    etypes: getAllTags('etype') as EventType[],
-    invitees: getAllTags('p'),
-    summary: getTag('summary'),
-
-    // Type-specific data
-    foodSlots: getAllTags('food'),
-    dietNotes: getTag('diet_notes'),
-    tasks: getAllTags('task'),
-    toolsNeeded: getTag('tools_needed'),
-    instructors: getAllTags('instructors'),
-    materials: getTag('materials'),
-    gameKind: getTag('game_kind'),
-    teamsMode: getTag('teams_mode'),
-    occasion: getTag('occasion'),
-  };
-}
-
-// Helper function to check if user can see private event
-export function canUserSeePrivateEvent(event: NostrEvent, userPubkey?: string): boolean {
-  const visibility = event.tags.find(([name]) => name === 'visibility')?.[1] || 'public';
-
-  if (visibility !== 'private') return true;
-  if (!userPubkey) return false;
-
-  const isOrganizer = event.pubkey === userPubkey;
-  const isInvited = event.tags.some(([name, value]) => name === 'p' && value === userPubkey);
-
-  return isOrganizer || isInvited;
 }
 
 // Helper function to get event type display info

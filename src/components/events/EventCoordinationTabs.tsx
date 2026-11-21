@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Users, Package, ListChecks, Trophy, Info, Bug } from "lucide-react";
 import { EventRolesTab } from "./coordination/EventRolesTab";
 import { EventItemsTab } from "./coordination/EventItemsTab";
@@ -92,7 +93,11 @@ export function EventCoordinationTabs({ event, isOrganizer, isModerator }: Event
 // Overview tab showing summary and gaps
 function EventOverviewTab({ event, summary, isLoading }: { event: NostrEvent; summary: EventCoordinationSummary | undefined; isLoading: boolean }) {
   if (isLoading) {
-    return <div>Loading coordination summary...</div>;
+    return (
+      <div className="grid gap-4 sm:grid-cols-2">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+      </div>
+    );
   }
 
   if (!summary) {
@@ -100,7 +105,7 @@ function EventOverviewTab({ event, summary, isLoading }: { event: NostrEvent; su
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <p className="text-muted-foreground">No coordination data yet</p>
-          <DebugCoordinationDialog event={event} />
+          {import.meta.env.DEV && <DebugCoordinationDialog event={event} />}
         </div>
       </div>
     );
@@ -137,15 +142,15 @@ function EventOverviewTab({ event, summary, isLoading }: { event: NostrEvent; su
 
   return (
     <div className="space-y-6">
-      {/* Header with Debug */}
-      <div className="flex items-center justify-end">
+      {/* Header with Debug - development builds only */}
+      {import.meta.env.DEV && <div className="flex items-center justify-end">
         <DebugCoordinationDialog event={event}>
           <Button variant="outline" size="sm">
             <Bug className="h-4 w-4 mr-2" />
             Debug
           </Button>
         </DebugCoordinationDialog>
-      </div>
+      </div>}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

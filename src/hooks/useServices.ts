@@ -78,44 +78,12 @@ export function useTribeServices(tribeId: string, filters: ServiceFilters = {}) 
         });
       }
 
-      console.log('🎯 After filters:', filteredEvents.length);
 
       const validEvents = filteredEvents.filter(validateServiceEvent);
-      console.log('✅ Valid services:', validEvents.length);
 
       // TODO: Filter out moderated services by checking for NIP-32 moderation labels
       // For now, return all valid events
       return validEvents;
-    },
-  });
-}
-
-// Hook to get a specific service
-export function useService(serviceId: string, kind: 38857 | 30627) {
-  const { nostr } = useNostr();
-
-  return useQuery({
-    queryKey: ['service', serviceId, kind],
-    queryFn: async (c) => {
-      const { signal } = c;
-
-      // Parse service coordinates (format: pubkey:d-identifier)
-      const [pubkey, dTag] = serviceId.split(':');
-      if (!pubkey || !dTag) {
-        throw new Error('Invalid service ID format');
-      }
-
-      const events = await nostr.query([
-        {
-          kinds: [kind],
-          authors: [pubkey],
-          '#d': [dTag],
-          limit: 1,
-        }
-      ], { signal });
-
-      const event = events[0];
-      return event && validateServiceEvent(event) ? event : null;
     },
   });
 }
@@ -138,7 +106,6 @@ export function useVillageServices(villageSlug: string, filters: ServiceFilters 
       if (!filters.type || filters.type === 'offer') kinds.push(38857);
       if (!filters.type || filters.type === 'request') kinds.push(30627);
 
-      console.log('🏘️ Querying village services for:', villageSlug);
 
       const villageEvents = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
         [{ kinds, limit: filters.limit || 200 }], signal);
@@ -154,7 +121,6 @@ export function useVillageServices(villageSlug: string, filters: ServiceFilters 
 
 
       const validEvents = filteredEvents.filter(validateServiceEvent);
-      console.log('✅ Valid village services after all strategies:', validEvents.length);
 
       // Filter out services from hidden tribes
       const nonHiddenEvents = validEvents.filter(event => {
@@ -162,36 +128,9 @@ export function useVillageServices(villageSlug: string, filters: ServiceFilters 
         return !tribeTag || !preferences.hiddenTribes.includes(tribeTag);
       });
 
-      console.log('🚫 After filtering hidden tribes:', nonHiddenEvents.length);
 
       // Sort by creation date (newest first)
       return nonHiddenEvents.sort((a, b) => b.created_at - a.created_at);
-    },
-  });
-}
-
-// Hook to get service matches for a service
-export function useServiceMatches(serviceId: string) {
-  const { nostr } = useNostr();
-
-  return useQuery({
-    queryKey: ['service-matches', serviceId],
-    queryFn: async (c) => {
-      const { signal } = c;
-
-      const [pubkey, dTag] = serviceId.split(':');
-      if (!pubkey || !dTag) return [];
-
-      // Look for matches that reference this service
-      const events = await nostr.query([
-        {
-          kinds: [34871], // Service Match
-          '#a': [`38857:${pubkey}:${dTag}`, `30627:${pubkey}:${dTag}`],
-          limit: 50,
-        }
-      ], { signal });
-
-      return events.filter(validateServiceMatchEvent);
     },
   });
 }

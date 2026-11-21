@@ -61,12 +61,6 @@ export function CreateItemDialog({ event, open, onOpenChange }: CreateItemDialog
       return;
     }
 
-    console.log('🎯 Creating item for event:', {
-      eventId: event.id,
-      eventKind: event.kind,
-      eventDTag,
-      title: formData.title.trim(),
-    });
 
     createItem({
       eventId: event.id,

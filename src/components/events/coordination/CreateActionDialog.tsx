@@ -57,12 +57,6 @@ export function CreateActionDialog({ event, open, onOpenChange }: CreateActionDi
       return;
     }
 
-    console.log('🎯 Creating action for event:', {
-      eventId: event.id,
-      eventKind: event.kind,
-      eventDTag,
-      title: formData.title.trim(),
-    });
 
     createAction({
       eventId: event.id,

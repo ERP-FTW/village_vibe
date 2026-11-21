@@ -2,28 +2,6 @@ import { useNostr } from '@nostrify/react';
 import { useQuery } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
 
-// Hook to get badge definitions for a tribe
-export function useTribeBadges(tribePubkey: string) {
-  const { nostr } = useNostr();
-
-  return useQuery({
-    queryKey: ['tribe-badges', tribePubkey],
-    queryFn: async (c) => {
-      const { signal } = c;
-
-      const events = await nostr.query([
-        {
-          kinds: [30009], // Badge Definition (NIP-58)
-          authors: [tribePubkey],
-          limit: 50,
-        }
-      ], { signal });
-
-      return events.filter(validateBadgeDefinition);
-    },
-  });
-}
-
 // Hook to get badge awards for a user
 export function useUserBadgeAwards(userPubkey: string) {
   const { nostr } = useNostr();
@@ -44,55 +22,6 @@ export function useUserBadgeAwards(userPubkey: string) {
       return events.filter(validateBadgeAward);
     },
     enabled: !!userPubkey,
-  });
-}
-
-// Hook to get user's profile badges (displayed badges)
-export function useUserProfileBadges(userPubkey: string) {
-  const { nostr } = useNostr();
-
-  return useQuery({
-    queryKey: ['user-profile-badges', userPubkey],
-    queryFn: async (c) => {
-      const { signal } = c;
-
-      const events = await nostr.query([
-        {
-          kinds: [30008], // Profile Badges (NIP-58)
-          authors: [userPubkey],
-          '#d': ['profile_badges'],
-          limit: 1,
-        }
-      ], { signal });
-
-      return events[0] || null;
-    },
-  });
-}
-
-// Hook to get badge awards for a specific event
-export function useEventBadgeAwards(eventId: string) {
-  const { nostr } = useNostr();
-
-  return useQuery({
-    queryKey: ['event-badge-awards', eventId],
-    queryFn: async (c) => {
-      const { signal } = c;
-
-      const [pubkey, dTag] = eventId.split(':');
-      if (!pubkey || !dTag) return [];
-
-      // Find badge awards that reference this event
-      const events = await nostr.query([
-        {
-          kinds: [8], // Badge Award (NIP-58)
-          '#t': [`event:${eventId}`], // Custom tag to link badge to event
-          limit: 200,
-        }
-      ], { signal });
-
-      return events.filter(validateBadgeAward);
-    },
   });
 }
 

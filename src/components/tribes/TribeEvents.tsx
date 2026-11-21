@@ -66,15 +66,15 @@ export function TribeEvents({ events, isLoading, canCreateEvents, tribeId, isMod
 
   return (
     <div className="space-y-8">
-      {/* Debug Button - Fixed bottom right */}
-      <div className="fixed bottom-4 right-4 z-50">
+      {/* Debug Button - development builds only */}
+      {import.meta.env.DEV && <div className="fixed bottom-16 right-4 z-50">
         <DebugEventsDialog tribeId={tribeId}>
           <Button size="sm" variant="outline" className="shadow-lg">
             <Bug className="h-4 w-4 mr-2" />
             Debug ({events.length})
           </Button>
         </DebugEventsDialog>
-      </div>
+      </div>}
 
       {events.length === 0 ? (
         <Card className="border-dashed">

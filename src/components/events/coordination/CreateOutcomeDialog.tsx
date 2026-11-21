@@ -82,13 +82,6 @@ export function CreateOutcomeDialog({ event, open, onOpenChange }: CreateOutcome
       return;
     }
 
-    console.log('🎯 Creating outcome for event:', {
-      eventId: event.id,
-      eventKind: event.kind,
-      eventDTag,
-      type: formData.type,
-      title: formData.title.trim(),
-    });
 
     createOutcome({
       eventId: event.id,

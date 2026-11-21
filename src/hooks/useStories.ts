@@ -48,7 +48,6 @@ export function useTribeStories(tribeId: string, filters: StoryFilters = {}) {
         event.tags.some(([name, value]) => name === 'tribe' && value === dTag));
 
       const validEvents = filteredEvents.filter(validateStoryEvent);
-      console.log('✅ Valid stories:', validEvents.length);
 
       // Sort by creation date (newest first)
       return validEvents.sort((a, b) => b.created_at - a.created_at);
@@ -69,7 +68,6 @@ export function useVillageStories(villageSlug: string, filters: StoryFilters = {
     queryFn: async (c) => {
       const { signal } = c;
 
-      console.log('🏘️ Querying village stories for:', villageSlug);
 
       // Strategy 1: Try to query with village tag filter first (more efficient if relay supports it)
       const villageEvents = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
@@ -80,7 +78,6 @@ export function useVillageStories(villageSlug: string, filters: StoryFilters = {
 
 
       const validEvents = filteredEvents.filter(validateStoryEvent);
-      console.log('✅ Valid village stories after all strategies:', validEvents.length);
 
       // Filter out stories from hidden tribes
       const nonHiddenEvents = validEvents.filter(event => {
@@ -88,7 +85,6 @@ export function useVillageStories(villageSlug: string, filters: StoryFilters = {
         return !tribeTag || !preferences.hiddenTribes.includes(tribeTag);
       });
 
-      console.log('🚫 After filtering hidden tribes:', nonHiddenEvents.length);
 
       // Deduplicate events by ID and sort by creation date (newest first)
       const uniqueEvents = Array.from(
@@ -443,7 +439,6 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
     queryFn: async (c) => {
       const { signal } = c;
 
-      console.log('🏘️ Querying stories for multiple villages:', villages);
 
       const villageEvents = await readVillageFeed(nostr, villages,
         [{ kinds: [30023], limit: filters.limit || 200 }], signal);
@@ -453,7 +448,6 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
 
 
       const validEvents = filteredEvents.filter(validateStoryEvent);
-      console.log('✅ Valid village stories after all strategies:', validEvents.length);
 
       // Filter out stories from hidden tribes
       const nonHiddenEvents = validEvents.filter(event => {
@@ -461,7 +455,6 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
         return !tribeTag || !preferences.hiddenTribes.includes(tribeTag);
       });
 
-      console.log('🚫 After filtering hidden tribes:', nonHiddenEvents.length);
 
       // Deduplicate events by ID and sort by creation date (newest first)
       const uniqueEvents = Array.from(

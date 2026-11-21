@@ -1,20 +1,25 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { Layout } from "./components/Layout";
 
 import Index from "./pages/Index";
-import TribesPage from "./pages/TribesPage";
-import TribePage from "./pages/TribePage";
-import EventPage from "./pages/EventPage";
-import StoryPage from "./pages/StoryPage";
-import VillagePage from "./pages/VillagePage";
-import ProfilePage from "./pages/ProfilePage";
-import ProfileSettingsPage from "./pages/ProfileSettingsPage";
-import ChatPage from "./pages/ChatPage";
-import AboutPage from "./pages/About";
-import { NIP19Page } from "./pages/NIP19Page";
-import { NIPPage } from "./pages/NIPPage";
-import HashtagPage from "./pages/HashtagPage";
+import { RouteFallback } from "./components/RouteFallback";
+
+// Route-level code splitting: each page loads on first visit instead of
+// shipping the whole app in one bundle.
+const TribesPage = lazy(() => import("./pages/TribesPage"));
+const TribePage = lazy(() => import("./pages/TribePage"));
+const EventPage = lazy(() => import("./pages/EventPage"));
+const StoryPage = lazy(() => import("./pages/StoryPage"));
+const VillagePage = lazy(() => import("./pages/VillagePage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const ProfileSettingsPage = lazy(() => import("./pages/ProfileSettingsPage"));
+const ChatPage = lazy(() => import("./pages/ChatPage"));
+const AboutPage = lazy(() => import("./pages/About"));
+const NIP19Page = lazy(() => import("./pages/NIP19Page").then(m => ({ default: m.NIP19Page })));
+const NIPPage = lazy(() => import("./pages/NIPPage").then(m => ({ default: m.NIPPage })));
+const HashtagPage = lazy(() => import("./pages/HashtagPage"));
 import NotFound from "./pages/NotFound";
 
 export function AppRouter() {
@@ -22,6 +27,7 @@ export function AppRouter() {
     <BrowserRouter>
       <ScrollToTop />
       <Layout>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/tribes" element={<TribesPage />} />
@@ -41,6 +47,7 @@ export function AppRouter() {
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
       </Layout>
     </BrowserRouter>
   );

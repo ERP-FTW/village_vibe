@@ -183,7 +183,7 @@ export function TribeServices({ tribeId, className, isModerator = false }: Tribe
       </div>
 
       {/* Debug Info */}
-      <ServiceDebug tribeId={tribeId} />
+      {import.meta.env.DEV && <ServiceDebug tribeId={tribeId} />}
 
       {/* Filters */}
       {showFilters && (

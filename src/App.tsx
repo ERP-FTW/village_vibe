@@ -27,8 +27,10 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       staleTime: 60000, // 1 minute
       gcTime: Infinity,
-      retry: 3, // Retry failed queries 3 times
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000), // Exponential backoff up to 10s
+      // A failed read already means no relay answered within the pool's 5s budget
+      // (see RelayPool), so one quick retry is enough before showing the error.
+      retry: 1,
+      retryDelay: 1000,
     },
   },
 });

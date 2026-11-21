@@ -28,6 +28,5 @@ export function useAuthor(pubkey: string | undefined) {
         return { event };
       }
     },
-    retry: 3,
   });
 }

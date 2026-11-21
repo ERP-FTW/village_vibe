@@ -1,35 +1,38 @@
-name: Deploy to GitHub Pages
+name: Deploy test build to GitHub Pages
 
+# Manual only: deploys one reviewed commit for live testing. There is no automatic
+# deployment on push. See docs/RELEASE.md for choosing the base path, the checks to run
+# after deploying, and how to roll back.
 on:
-  # Runs on pushes targeting the default branch
-  push:
-    branches: ["main"]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA to build and deploy (use the exact commit that was reviewed and tested)"
+        required: true
+        type: string
+      base_path:
+        description: "Path the site is served under: '/village_vibe/' for https://erp-ftw.github.io/village_vibe/, or '/' for a custom domain at its root"
+        required: true
+        type: string
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# One deployment at a time; never cancel one that is in progress.
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout the requested commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -39,17 +42,68 @@ jobs:
 
       - run: npm ci
 
-      - name: Test and build Pages artifact
+      # Type check, lint, tests and the production build, with the deployment's base path
+      - name: Test and build
         run: npm test
+        env:
+          VITE_BASE_PATH: ${{ inputs.base_path }}
+
+      # npm run build also writes dist/404.html (a copy of index.html): GitHub Pages serves it
+      # for unknown paths, so direct links and reloads of client-side routes load the app.
+      - name: Build info
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          BASE_PATH: ${{ inputs.base_path }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          test -f dist/404.html
+          node -e '
+            const fs = require("fs");
+            const info = {
+              commit: require("child_process").execSync("git rev-parse HEAD").toString().trim(),
+              requestedRef: process.env.INPUT_REF,
+              basePath: process.env.BASE_PATH,
+              builtAt: new Date().toISOString(),
+              workflowRun: process.env.RUN_URL,
+            };
+            fs.writeFileSync("dist/build-info.json", JSON.stringify(info, null, 2) + "\n");
+            console.log(info);
+          '
 
       - name: Setup Pages
+        id: pages
         uses: actions/configure-pages@v5
+
+      # Rollback reference: what was live before this deployment
+      - name: Record the currently deployed build
+        env:
+          PAGE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          {
+            echo "## Deployment"
+            echo
+            echo "New build: \`$(node -p 'require("./dist/build-info.json").commit')\`"
+            echo
+            echo "Previously deployed (re-run this workflow with its commit to roll back):"
+            echo
+            echo '```json'
+            curl -fsS --max-time 20 "${PAGE_URL%/}/build-info.json" || echo '"no build-info.json found (first tracked deployment)"'
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

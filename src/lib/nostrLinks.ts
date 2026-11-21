@@ -1,5 +1,6 @@
 import type { NostrEvent } from '@nostrify/nostrify';
 import { nip19 } from 'nostr-tools';
+import { appUrl } from './appUrl';
 
 export interface NostrShareLinks {
   web: string;
@@ -15,7 +16,7 @@ function dTagOf(event: NostrEvent): string {
 
 function addressLinks(kind: number, pubkey: string, identifier: string, path: string, text: (web: string, naddr: string) => string): NostrShareLinks {
   const naddr = nip19.naddrEncode({ kind, pubkey, identifier });
-  const web = `${window.location.origin}/${path}/${pubkey}:${encodeURIComponent(identifier)}`;
+  const web = appUrl(`${path}/${pubkey}:${encodeURIComponent(identifier)}`);
   return { web, naddr, coordinate: `${kind}:${pubkey}:${identifier}`, text: text(web, naddr) };
 }
 

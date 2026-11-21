@@ -1,6 +1,7 @@
 import { useSendDirectMessage } from './useSendDirectMessage';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { latestRSVPs } from '@/lib/rsvp';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -211,8 +212,8 @@ export function useUserRSVP(eventId: string, userPubkey?: string) {
         { signal },
       );
 
-      const rsvp = events.find(validateRSVPEvent);
-      return rsvp ?? null;
+      // The user's own latest RSVP (they may have several d tags across clients)
+      return latestRSVPs(events.filter(validateRSVPEvent))[0] ?? null;
     },
     enabled: !!userPubkey,
   });

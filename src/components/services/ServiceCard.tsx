@@ -12,7 +12,7 @@ import { TribeName } from '@/components/tribes/TribeName';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useUserBadgeAwards } from '@/hooks/useBadges';
-import { useCreateServiceMatch } from '@/hooks/useServices';
+import { useCreateServiceMatch, useServiceMatches } from '@/hooks/useServices';
 import { useTribe } from '@/hooks/useTribes';
 import { extractServiceData, formatDistance, calculateDistance } from '@/hooks/useServices';
 import { genUserName } from '@/lib/genUserName';
@@ -43,6 +43,9 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
   const { data: badges } = useUserBadgeAwards(event.pubkey);
   const { toast } = useToast();
   const { mutate: createMatch, isPending: isMatching } = useCreateServiceMatch();
+  const isAuthor = user?.pubkey === event.pubkey;
+  // Responses are only fetched for the author's own services (one query per own card).
+  const { data: responses } = useServiceMatches(event, isAuthor);
 
   // Check if user is admin/moderator of this tribe
   const { data: tribe } = useTribe(tribeId || '');
@@ -81,8 +84,15 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
       type: isOffer ? 'request_to_offer' : 'offer_to_request',
       message: isOffer ? 'I need this service' : 'I can help with this',
     }, {
-      onSuccess: () => toast({ title: 'Service match published' }),
-      onError: () => toast({ title: 'Could not publish service match', variant: 'destructive' }),
+      onSuccess: () => toast({
+        title: 'Response sent',
+        description: `${displayName} has been notified. You can also message them directly.`,
+      }),
+      onError: (error) => toast({
+        title: 'Could not send your response',
+        description: error instanceof Error ? error.message : undefined,
+        variant: 'destructive',
+      }),
     });
   };
 
@@ -221,6 +231,12 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
                   </Button>
                 </ServicePromotionDialog>
               </>
+            )}
+
+            {isAuthor && responses && responses.length > 0 && (
+              <Badge variant="secondary" title="People who responded to this service">
+                {responses.length} {responses.length === 1 ? 'response' : 'responses'}
+              </Badge>
             )}
 
             {/* User action button */}

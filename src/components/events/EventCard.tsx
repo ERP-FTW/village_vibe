@@ -23,7 +23,8 @@ export function EventCard({ event, isPast = false, showModerationActions = false
   const titleTag = event.tags.find(([name]) => name === 'title')?.[1];
   const summaryTag = event.tags.find(([name]) => name === 'summary')?.[1];
   const imageTag = event.tags.find(([name]) => name === 'image')?.[1];
-  const locationTag = event.tags.find(([name]) => name === 'location')?.[1];
+  // Enhanced events store the venue in `place`; NIP-52 calendar events use `location`.
+  const locationTag = event.tags.find(([name]) => name === 'place' || name === 'location')?.[1];
   const startTag = event.tags.find(([name]) => name === 'start')?.[1];
   const endTag = event.tags.find(([name]) => name === 'end')?.[1];
 
@@ -129,7 +130,7 @@ export function EventCard({ event, isPast = false, showModerationActions = false
           const tribeTag = event.tags.find(([name]) => name === 'tribe')?.[1];
           return tribeTag ? (
             <div className="flex gap-2">
-              <TribeName tribeTag={tribeTag} />
+              <TribeName tribeTag={tribeTag} memberPubkey={event.pubkey} />
             </div>
           ) : null;
         })()}

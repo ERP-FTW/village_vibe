@@ -359,6 +359,7 @@ export function useCreateEnhancedEvent() {
     mutationFn: async (data: {
       tribe: string;
       title: string;
+      summary?: string;
       content: string;
       start: number;
       end?: number;
@@ -387,6 +388,7 @@ export function useCreateEnhancedEvent() {
         ['d', dTag],
         ['tribe', tribeTagValue], // Use dTag part for tribe tag
         ['title', data.title],
+        ...(data.summary ? [['summary', data.summary]] : []),
         ['start', data.start.toString()],
         ['place', data.place],
         ['l', `${data.lat.toFixed(4)},${data.lon.toFixed(4)}`], // Round for privacy

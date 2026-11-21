@@ -1,5 +1,19 @@
 import QRCode from 'qrcode';
 
+/** Public URL of a tribe's Services tab (route: /tribe/:tribeId). */
+export function tribeServicesUrl(tribeId: string): string {
+  return `${window.location.origin}/tribe/${tribeId}?tab=services`;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 /**
  * Generate QR code for tribe services page
  */
@@ -14,8 +28,7 @@ export async function generateTribeServicesQR(
     };
   } = {}
 ): Promise<string> {
-  const baseUrl = window.location.origin;
-  const url = `${baseUrl}/tribes/${tribeId}?tab=services`;
+  const url = tribeServicesUrl(tribeId);
   
   const qrOptions = {
     width: options.size || 256,
@@ -50,8 +63,9 @@ export async function generateTribeServicesPoster(
     size: options.qrSize || 200 
   });
   
-  const title = options.title || `${tribeName} Services`;
-  const subtitle = options.subtitle || 'Offer help • Need help?';
+  const title = escapeXml(options.title || `${tribeName} Services`);
+  const subtitle = escapeXml(options.subtitle || 'Offer help • Need help?');
+  const url = escapeXml(`${window.location.origin}/tribe/${tribeId}`);
   
   // Create SVG poster
   const svg = `
@@ -73,12 +87,12 @@ export async function generateTribeServicesPoster(
       <text x="200" y="90" class="subtitle" fill="#6b7280">${subtitle}</text>
       
       <!-- QR Code -->
-      <image x="100" y="150" width="200" height="200" href="${qrDataUrl}"/>
+      <image x="100" y="150" width="200" height="200" href="${escapeXml(qrDataUrl)}"/>
       
       <!-- Instructions -->
       <text x="200" y="400" class="instruction" fill="#374151">Scan to access community services</text>
       <text x="200" y="430" class="instruction" fill="#374151">or visit:</text>
-      <text x="200" y="460" class="url" fill="#6b7280">${window.location.origin}/tribes/${tribeId}</text>
+      <text x="200" y="460" class="url" fill="#6b7280">${url}</text>
       
       <!-- Footer -->
       <text x="200" y="520" class="instruction" fill="#9ca3af">• Offer your skills</text>
@@ -115,6 +129,7 @@ export function downloadSVGPoster(svgContent: string, filename: string = 'tribe-
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  
-  URL.revokeObjectURL(url);
+
+  // Revoking synchronously can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

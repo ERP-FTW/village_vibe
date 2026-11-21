@@ -113,7 +113,7 @@ Reply with "yes", "no", or "maybe" to RSVP quickly!
           kind: 1,
           content,
           tags: [
-            ['a', `31923:${pubkey}:${dTag}`],
+            ['a', links.coordinate],
             ['t', 'event'],
             ['t', 'calendar'],
             ['r', links.web],
@@ -134,7 +134,7 @@ Join here: ${links.web}
           kind: 1,
           content,
           tags: [
-            ['a', `34550:${pubkey}:${dTag}`],
+            ['a', links.coordinate],
             ['t', 'tribe'],
             ['t', 'community'],
             ['r', links.web],

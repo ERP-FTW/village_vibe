@@ -14,6 +14,7 @@ import ChatPage from "./pages/ChatPage";
 import AboutPage from "./pages/About";
 import { NIP19Page } from "./pages/NIP19Page";
 import { NIPPage } from "./pages/NIPPage";
+import HashtagPage from "./pages/HashtagPage";
 import NotFound from "./pages/NotFound";
 
 export function AppRouter() {
@@ -34,6 +35,7 @@ export function AppRouter() {
           <Route path="/messages" element={<ChatPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/nip" element={<NIPPage />} />
+          <Route path="/t/:tag" element={<HashtagPage />} />
           {/* NIP-19 route for npub1, note1, naddr1, nevent1, nprofile1 */}
           <Route path="/:nip19" element={<NIP19Page />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

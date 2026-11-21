@@ -2,6 +2,8 @@ import { useSeoMeta } from '@unhead/react';
 import { useParams, Link } from 'react-router-dom';
 import { useStory, useStoryLabels, extractStoryData } from '@/hooks/useStories';
 import { useAuthor } from '@/hooks/useAuthor';
+import { useTribeName } from '@/hooks/useTribes';
+import { tribeIdOf } from '@/lib/tribes';
 import { useBadges } from '@/hooks/useBadges';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { genUserName } from '@/lib/genUserName';
@@ -14,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { NoteContent } from '@/components/NoteContent';
 import { CommentsSection } from '@/components/comments/CommentsSection';
 import { ZapButton } from '@/components/ZapButton';
+import { createStoryShareLinks } from '@/lib/nostrLinks';
 import { ShareButton } from '@/components/ShareButton';
 import { RelaySelector } from '@/components/RelaySelector';
 import { ArrowLeft, Calendar, MapPin, Users, ExternalLink } from 'lucide-react';
@@ -30,6 +33,8 @@ const StoryPage = () => {
 
   // Always call hooks at the top level
   const { data: story, isLoading, error } = useStory(storyId || '');
+  const storyTribeTag = story?.tags.find(([name]) => name === 'tribe')?.[1];
+  const { data: storyTribe } = useTribeName(storyTribeTag, story?.pubkey);
   const { data: labels } = useStoryLabels(storyId || '');
   const author = useAuthor(story?.pubkey || '');
   const badges = useBadges(story?.pubkey);
@@ -208,11 +213,11 @@ const StoryPage = () => {
             </h1>
 
             <div className="flex flex-wrap gap-2">
-              {storyData.tribe && (
-                <Link to={`/tribe/${story.pubkey}:${storyData.tribe}`}>
+              {storyData.tribe && storyTribe && (
+                <Link to={`/tribe/${tribeIdOf(storyTribe.tribe)}`}>
                   <Badge variant="secondary" className="hover:bg-secondary/80">
                     <Users className="h-3 w-3 mr-1" />
-                    {storyData.tribe}
+                    {storyTribe.name}
                     <ExternalLink className="h-3 w-3 ml-1" />
                   </Badge>
                 </Link>
@@ -261,11 +266,7 @@ const StoryPage = () => {
             />
 
             <ShareButton
-              links={{
-                naddr: `naddr1${storyId}`, // This would need proper naddr encoding
-                web: window.location.href,
-                text: `Check out this story: ${storyData.title} ${window.location.href}`,
-              }}
+              links={createStoryShareLinks(story, storyData.title || 'Story')}
               title={storyData.title || 'Story'}
             />
           </div>

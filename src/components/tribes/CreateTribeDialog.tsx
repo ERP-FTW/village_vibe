@@ -19,7 +19,7 @@ interface CreateTribeDialogProps {
 
 export function CreateTribeDialog({ children }: CreateTribeDialogProps) {
   const { user } = useCurrentUser();
-  const { mutate: createEvent, isPending: isCreating } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isCreating } = useNostrPublish();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
   const { toast } = useToast();
   
@@ -92,7 +92,7 @@ export function CreateTribeDialog({ children }: CreateTribeDialogProps) {
         tags.push(['closed']);
       }
 
-      createEvent({
+      await createEvent({
         kind: 34550, // Community Definition (NIP-72)
         content: formData.description.trim(),
         tags,

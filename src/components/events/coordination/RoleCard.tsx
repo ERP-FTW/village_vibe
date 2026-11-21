@@ -1,7 +1,6 @@
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useClaimRole, type EventRole, type RoleClaim } from "@/hooks/useEventCoordination";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
 import { useAuthor } from "@/hooks/useAuthor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +21,6 @@ interface RoleCardProps {
 export function RoleCard({ role, event, claims }: RoleCardProps) {
   const { user } = useCurrentUser();
   const { mutate: claimRole, isPending: isClaiming } = useClaimRole();
-  const { mutateAsync: publish } = useNostrPublish();
   const { toast } = useToast();
 
   const activeClaims = claims.filter(c => c.status === 'active');
@@ -51,21 +49,11 @@ export function RoleCard({ role, event, claims }: RoleCardProps) {
       eventAuthor: event.pubkey,
       eventDTag: dTag,
     }, {
-      onSuccess: async (result) => {
-        try {
-          await publish(result.eventData);
-          toast({
-            title: "Success",
-            description: "You've claimed this role!",
-          });
-        } catch (err) {
-          console.error('Failed to publish claim:', err);
-          toast({
-            title: "Error",
-            description: "Failed to publish claim to relay",
-            variant: "destructive",
-          });
-        }
+      onSuccess: () => {
+        toast({
+          title: "Success",
+          description: "You've claimed this role!",
+        });
       },
       onError: (err) => {
         console.error('Failed to claim role:', err);

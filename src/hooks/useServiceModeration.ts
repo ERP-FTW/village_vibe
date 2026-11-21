@@ -5,7 +5,7 @@ import type { NostrEvent } from '@nostrify/nostrify';
 
 // Hook to moderate (hide) services
 export function useModerateService() {
-  const { mutate: publishEvent } = useNostrPublish();
+  const { mutateAsync: publishEvent } = useNostrPublish();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -29,11 +29,10 @@ export function useModerateService() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publishEvent(labelEvent);
       return { labelEvent, serviceEvent: data.serviceEvent };
     },
-    onSuccess: (result) => {
-      // Publish the moderation label
-      publishEvent(result.labelEvent);
+    onSuccess: () => {
 
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['tribe-services'] });

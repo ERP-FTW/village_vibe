@@ -28,7 +28,7 @@ interface ServicePromotionDialogProps {
 export function ServicePromotionDialog({ children, service }: ServicePromotionDialogProps) {
   const { user } = useCurrentUser();
   const { toast } = useToast();
-  const { mutate: publishEvent, isPending } = useNostrPublish();
+  const { mutateAsync: publishEvent, isPending } = useNostrPublish();
   
   const [open, setOpen] = useState(false);
   const [newVillage, setNewVillage] = useState('');
@@ -89,23 +89,12 @@ export function ServicePromotionDialog({ children, service }: ServicePromotionDi
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      publishEvent(updatedService, {
-        onSuccess: () => {
-          toast({
-            title: "Service promoted",
-            description: `Service is now visible in ${villages.length} village(s).`,
-          });
-          setOpen(false);
-        },
-        onError: (error) => {
-          console.error('Failed to promote service:', error);
-          toast({
-            title: "Promotion failed",
-            description: "Failed to promote service to villages. Please try again.",
-            variant: "destructive",
-          });
-        },
+      await publishEvent(updatedService);
+      toast({
+        title: "Service promoted",
+        description: `Service is now visible in ${villages.length} village(s).`,
       });
+      setOpen(false);
     } catch (error) {
       console.error('Service promotion error:', error);
       toast({

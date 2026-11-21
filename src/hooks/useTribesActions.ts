@@ -7,7 +7,7 @@ import type { NostrEvent } from "@nostrify/nostrify";
 export function useJoinTribe() {
   const { user } = useCurrentUser();
   const { nostr } = useNostr();
-  const { mutate: createEvent, isPending } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending } = useNostrPublish();
   const { toast } = useToast();
 
   const joinTribe = async (tribe: NostrEvent) => {
@@ -96,7 +96,7 @@ export function useJoinTribe() {
 
       // Send a join request event using NIP-29 format
       // This creates a join request that tribe admins can see and process
-      createEvent({
+      await createEvent({
         kind: 9021, // Join request (NIP-29)
         content: `Requesting to join ${tribeName}`,
         tags: [

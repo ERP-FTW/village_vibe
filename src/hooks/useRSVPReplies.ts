@@ -9,7 +9,7 @@ import type { NostrEvent } from '@nostrify/nostrify';
 export function useRSVPReplies(eventPubkey: string, eventDTag: string) {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
-  const { mutate: createEvent } = useNostrPublish();
+  const { mutateAsync: createEvent } = useNostrPublish();
   const { toast } = useToast();
 
   // Query for replies to event announcement notes
@@ -97,7 +97,7 @@ export function useRSVPReplies(eventPubkey: string, eventDTag: string) {
           tags.push(['fb', 'busy']);
         }
 
-        createEvent({
+        await createEvent({
           kind: 31925, // Calendar Event RSVP (NIP-52)
           content: reply.content,
           tags,

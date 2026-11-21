@@ -1,3 +1,4 @@
+import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -178,8 +179,7 @@ export function useStoryLabels(storyId: string) {
 
 // Hook to create or update a story
 export function useCreateStory() {
-  const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       tribe: string;
@@ -229,27 +229,8 @@ export function useCreateStory() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, dTag, eventData };
-    },
-    onSuccess: (result, variables) => {
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({
-        queryKey: ['tribe-stories']
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['village-stories']
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['multi-village-stories']
-      });
-      if (variables.villages) {
-        variables.villages.forEach(village => {
-          queryClient.invalidateQueries({
-            queryKey: ['village-stories', village]
-          });
-        });
-      }
     },
   });
 }
@@ -257,7 +238,7 @@ export function useCreateStory() {
 // Hook to create a story label (for moderation)
 export function useCreateStoryLabel() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       storyId: string;
@@ -291,7 +272,7 @@ export function useCreateStoryLabel() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, eventData };
     },
     onSuccess: (_, variables) => {
@@ -316,7 +297,7 @@ export function useCreateStoryLabel() {
 // Hook to promote a story to villages (creates label AND updates story with village tags)
 export function usePromoteStoryToVillages() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       story: NostrEvent;
@@ -371,6 +352,8 @@ export function usePromoteStoryToVillages() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(updatedStory);
+      await publish(promotionLabel);
       return {
         storyId,
         updatedStory,

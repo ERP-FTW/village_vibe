@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useNostr } from '@nostrify/react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNostrPublish } from "@/hooks/useNostrPublish";
 import { useAuthor } from "@/hooks/useAuthor";
@@ -87,8 +87,7 @@ function JoinRequestCard({ request, onApprove, onReject, isProcessing }: JoinReq
 export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
   const { user } = useCurrentUser();
   const { nostr } = useNostr();
-  const queryClient = useQueryClient();
-  const { mutate: createEvent, isPending: isProcessing } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isProcessing } = useNostrPublish();
   const { toast } = useToast();
 
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
@@ -186,7 +185,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
       // Add the user as a member (only if not already present)
       currentTags.push(['p', request.pubkey, '', 'member']);
 
-      createEvent({
+      await createEvent({
         kind: 34550, // Update tribe definition
         content: tribe.content,
         tags: currentTags,
@@ -197,7 +196,6 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
         description: "User has been added to the tribe",
       });
 
-      refetch();
     } catch (error) {
       console.error('Error approving member:', error);
       toast({
@@ -215,7 +213,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
 
     try {
       // Create a rejection event to track rejected users
-      createEvent({
+      await createEvent({
         kind: 9022, // Join rejection (custom kind)
         content: `Join request rejected for tribe ${tribeId}`,
         tags: [
@@ -230,7 +228,6 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
         description: "Join request has been rejected and removed",
       });
 
-      refetch();
     } catch (error) {
       console.error('Error rejecting member:', error);
       toast({
@@ -249,7 +246,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
     try {
       // Create a map to deduplicate members by pubkey, keeping highest role
       const memberMap = new Map<string, [string, string, string, string]>();
-      const nonMemberTags: Array<[string, string, string?, string?]> = [];
+      const nonMemberTags: string[][] = [];
 
       // Role hierarchy: admin > moderator > event_creator > member/undefined
       const roleHierarchy = { admin: 4, moderator: 3, event_creator: 2, member: 1 };
@@ -267,7 +264,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
           }
         } else {
           // Keep all non-member tags as-is
-          nonMemberTags.push(tag as [string, string, string?, string?]);
+          nonMemberTags.push(tag);
         }
       });
 
@@ -289,7 +286,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
         return;
       }
 
-      createEvent({
+      await createEvent({
         kind: 34550,
         content: tribe.content,
         tags: cleanedTags,
@@ -300,11 +297,6 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
         description: `Removed ${originalMemberCount - cleanedMemberCount} duplicate member entries`,
       });
 
-      // Invalidate related queries to refresh the UI
-      queryClient.invalidateQueries({ queryKey: ['tribe', tribeId] });
-      queryClient.invalidateQueries({ queryKey: ['tribe-member-count', tribeId] });
-      queryClient.invalidateQueries({ queryKey: ['my-tribes'] });
-      queryClient.invalidateQueries({ queryKey: ['public-tribes'] });
     } catch (error) {
       console.error('Error cleaning duplicates:', error);
       toast({

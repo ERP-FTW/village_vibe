@@ -2,7 +2,6 @@ import type { NostrEvent } from "@nostrify/nostrify";
 import { useState } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useClaimItem, type EventItem, type ItemClaim } from "@/hooks/useEventCoordination";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
 import { useAuthor } from "@/hooks/useAuthor";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +25,6 @@ interface ItemCardProps {
 export function ItemCard({ item, event, claims }: ItemCardProps) {
   const { user } = useCurrentUser();
   const { mutate: claimItem, isPending: isClaiming } = useClaimItem();
-  const { mutateAsync: publish } = useNostrPublish();
   const { toast } = useToast();
   const [showClaimDialog, setShowClaimDialog] = useState(false);
   const [claimQty, setClaimQty] = useState('1');
@@ -71,24 +69,14 @@ export function ItemCard({ item, event, claims }: ItemCardProps) {
       quantity,
       notes: claimNotes.trim() || undefined,
     }, {
-      onSuccess: async (result) => {
-        try {
-          await publish(result.eventData);
-          toast({
-            title: "Success",
-            description: `You've claimed ${quantity} ${item.unit || 'item'}${quantity > 1 ? 's' : ''}!`,
-          });
-          setShowClaimDialog(false);
-          setClaimQty('1');
-          setClaimNotes('');
-        } catch (err) {
-          console.error('Failed to publish item claim:', err);
-          toast({
-            title: "Error",
-            description: "Failed to publish claim to relay",
-            variant: "destructive",
-          });
-        }
+      onSuccess: () => {
+        toast({
+          title: "Success",
+          description: `You've claimed ${quantity} ${item.unit || 'item'}${quantity > 1 ? 's' : ''}!`,
+        });
+        setShowClaimDialog(false);
+        setClaimQty('1');
+        setClaimNotes('');
       },
       onError: (err) => {
         console.error('Failed to claim item:', err);

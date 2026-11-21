@@ -1,3 +1,5 @@
+import { useCurrentUser } from './useCurrentUser';
+import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -213,8 +215,7 @@ export function useServiceMatches(serviceId: string) {
 
 // Hook to create or update a service
 export function useCreateService() {
-  const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       type: ServiceType;
@@ -270,24 +271,8 @@ export function useCreateService() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, dTag, kind, eventData };
-    },
-    onSuccess: (result, variables) => {
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({
-        queryKey: ['tribe-services']
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['village-services']
-      });
-      if (variables.villages) {
-        variables.villages.forEach(village => {
-          queryClient.invalidateQueries({
-            queryKey: ['village-services', village]
-          });
-        });
-      }
     },
   });
 }
@@ -295,7 +280,7 @@ export function useCreateService() {
 // Hook to promote a service to villages (creates label AND updates service with village tags)
 export function usePromoteServiceToVillages() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       service: NostrEvent;
@@ -350,6 +335,8 @@ export function usePromoteServiceToVillages() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(updatedService);
+      await publish(promotionLabel);
       return {
         serviceId,
         updatedService,
@@ -382,7 +369,7 @@ export function usePromoteServiceToVillages() {
 // Hook to create a service label (for moderation)
 export function useCreateServiceLabel() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       serviceId: string;
@@ -417,7 +404,7 @@ export function useCreateServiceLabel() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, eventData };
     },
     onSuccess: (_, variables) => {
@@ -438,8 +425,9 @@ export function useCreateServiceLabel() {
 
 // Hook to create a service match
 export function useCreateServiceMatch() {
+  const { user } = useCurrentUser();
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       requestARef?: string;
@@ -447,6 +435,7 @@ export function useCreateServiceMatch() {
       type: 'offer_to_request' | 'request_to_offer' | 'admin_suggestion';
       message?: string;
     }) => {
+      if (!user) throw new Error('User is not logged in');
       // Generate a unique d tag for the match
       const dTag = `match-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -454,6 +443,7 @@ export function useCreateServiceMatch() {
       const tags: string[][] = [
         ['d', dTag],
         ['type', data.type],
+        ['by', user.pubkey],
         ['alt', 'Service match connecting community members'],
       ];
 
@@ -469,7 +459,7 @@ export function useCreateServiceMatch() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, dTag, eventData };
     },
     onSuccess: (_, variables) => {

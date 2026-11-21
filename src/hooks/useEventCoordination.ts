@@ -1,3 +1,4 @@
+import { useNostrPublish } from './useNostrPublish';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
@@ -91,7 +92,7 @@ export interface RoleClaim {
 // Create a role for an event
 export function useCreateRole() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       eventId: string;
@@ -130,6 +131,7 @@ export function useCreateRole() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(eventData);
       return { eventData, roleId };
     },
     onSuccess: (_, variables) => {
@@ -143,7 +145,7 @@ export function useCreateRole() {
 // Claim a role
 export function useClaimRole() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       roleId: string;
@@ -175,6 +177,7 @@ export function useClaimRole() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(eventData);
       return { eventData, claimId };
     },
     onSuccess: (_, variables) => {
@@ -218,7 +221,7 @@ export interface ItemClaim {
 // Create an item for an event
 export function useCreateItem() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       eventId: string;
@@ -255,6 +258,7 @@ export function useCreateItem() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(eventData);
       return { eventData, itemId };
     },
     onSuccess: (_, variables) => {
@@ -268,7 +272,7 @@ export function useCreateItem() {
 // Claim an item
 export function useClaimItem() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       itemId: string;
@@ -302,6 +306,7 @@ export function useClaimItem() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(eventData);
       return { eventData, claimId };
     },
     onSuccess: (_, variables) => {
@@ -345,7 +350,7 @@ export interface ActionUpdate {
 // Create an action for an event
 export function useCreateAction() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       eventId: string;
@@ -386,6 +391,7 @@ export function useCreateAction() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(eventData);
       return { eventData, actionId };
     },
     onSuccess: (_, variables) => {
@@ -399,7 +405,7 @@ export function useCreateAction() {
 // Update action status
 export function useUpdateAction() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       actionId: string;
@@ -432,6 +438,7 @@ export function useUpdateAction() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(eventData);
       return { eventData, updateId };
     },
     onSuccess: (_, variables) => {
@@ -463,7 +470,7 @@ export interface EventOutcome {
 // Create an outcome for an event
 export function useCreateOutcome() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       eventId: string;
@@ -501,6 +508,7 @@ export function useCreateOutcome() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(eventData);
       return { eventData, outcomeId };
     },
     onSuccess: (_, variables) => {

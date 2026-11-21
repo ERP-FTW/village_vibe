@@ -1,3 +1,5 @@
+import { useSendDirectMessage } from './useSendDirectMessage';
+import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -165,7 +167,7 @@ export function useEventAttendance(eventId: string) {
       const events = await nostr.query([
         {
           kinds: [2073], // Custom attendance verification kind
-          '#a': [`31923:${pubkey}:${dTag}`],
+          '#a': [`31923:${pubkey}:${dTag}`, `36959:${pubkey}:${dTag}`],
           limit: 200,
         }
       ], { signal });
@@ -260,7 +262,7 @@ export function useVillageEvents(villageSlug: string, filters: EventFilters = {}
 // Hook to promote an event to villages (creates label AND updates event with village tags)
 export function usePromoteEventToVillages() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       event: NostrEvent;
@@ -289,7 +291,7 @@ export function usePromoteEventToVillages() {
       ];
 
       const updatedEvent = {
-        kind: 31923,
+        kind: event.kind,
         content: event.content,
         tags: updatedTags,
         created_at: Math.floor(Date.now() / 1000),
@@ -297,7 +299,7 @@ export function usePromoteEventToVillages() {
 
       // Create promotion label
       const labelTags: string[][] = [
-        ['a', `31923:${event.pubkey}:${dTag}`],
+        ['a', `${event.kind}:${event.pubkey}:${dTag}`],
         ['l', 'village-promoted', 'promotion'],
         ['L', 'promotion'],
         ['alt', `Event promoted to villages: ${villages.join(', ')}`],
@@ -315,6 +317,8 @@ export function usePromoteEventToVillages() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(updatedEvent);
+      await publish(promotionLabel);
       return {
         eventId,
         updatedEvent,
@@ -346,8 +350,7 @@ export function usePromoteEventToVillages() {
 
 // Hook to create or update an enhanced event
 export function useCreateEnhancedEvent() {
-  const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       tribe: string;
@@ -435,40 +438,20 @@ export function useCreateEnhancedEvent() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      const published = await publish(eventData);
       return {
         ...data,
         dTag,
-        eventData,
-        eventId: `${eventData.created_at}:${dTag}` // Temporary ID for UI
+        eventData: published,
+        eventId: `${published.pubkey}:${dTag}`,
       };
-    },
-    onSuccess: (result, variables) => {
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({
-        queryKey: ['tribe-events']
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['village-events']
-      });
-
-      // Invalidate tribe-specific query using full tribeId
-      queryClient.invalidateQueries({
-        queryKey: ['tribe-events', variables.tribe]
-      });
-
-      if (variables.villages) {
-        variables.villages.forEach(village => {
-          queryClient.invalidateQueries({
-            queryKey: ['village-events', village]
-          });
-        });
-      }
     },
   });
 }
 
 // Hook to send private event details via DM
 export function useSendPrivateEventDetails() {
+  const { mutateAsync: send } = useSendDirectMessage();
   return useMutation({
     mutationFn: async (data: {
       eventId: string;
@@ -489,16 +472,10 @@ Organizer: ${data.organizer}
 
 This is a private event. Please don't share these details publicly.`;
 
-      // Return DM data for each invitee (to be sent via useNostrPublish)
-      return data.invitees.map(invitee => ({
-        kind: 4, // Encrypted Direct Message (NIP-04)
-        content: dmContent,
-        tags: [
-          ['p', invitee],
-          ['alt', `Private event details for ${data.eventTitle}`],
-        ],
-        invitee,
-      }));
+      const sent = await Promise.allSettled([...new Set(data.invitees)].map(recipient =>
+        send({ recipient, message: dmContent })
+      ));
+      return sent.filter(outcome => outcome.status === 'rejected').length;
     },
   });
 }
@@ -506,7 +483,7 @@ This is a private event. Please don't share these details publicly.`;
 // Hook to create an event label (for moderation)
 export function useCreateEventLabel() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       eventId: string;
@@ -541,7 +518,7 @@ export function useCreateEventLabel() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, eventData };
     },
     onSuccess: (_, variables) => {

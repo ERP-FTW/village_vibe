@@ -17,7 +17,7 @@ interface EventRSVPProps {
 
 export function EventRSVP({ event, userRSVP, eventId }: EventRSVPProps) {
   const { user } = useCurrentUser();
-  const { mutate: createEvent, isPending: isSubmitting } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isSubmitting } = useNostrPublish();
   const { toast } = useToast();
 
   const [note, setNote] = useState('');
@@ -58,7 +58,7 @@ export function EventRSVP({ event, userRSVP, eventId }: EventRSVPProps) {
         tags.push(['fb', 'busy']);
       }
 
-      createEvent({
+      await createEvent({
         kind: 31925, // Calendar Event RSVP (NIP-52)
         content: note.trim(),
         tags,

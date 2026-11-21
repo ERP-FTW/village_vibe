@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useCreateEventLabel, usePromoteEventToVillages } from '@/hooks/useEvents';
-import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
   Dialog,
@@ -34,9 +33,8 @@ export function EventModerationDialog({
 }: EventModerationDialogProps) {
   const { user } = useCurrentUser();
   const { toast } = useToast();
-  const { mutate: createLabel, isPending: isCreatingLabel } = useCreateEventLabel();
-  const { mutate: promoteToVillages, isPending: isPromoting } = usePromoteEventToVillages();
-  const { mutate: publishEvent } = useNostrPublish();
+  const { mutateAsync: createLabel, isPending: isCreatingLabel } = useCreateEventLabel();
+  const { mutateAsync: promoteToVillages, isPending: isPromoting } = usePromoteEventToVillages();
 
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
@@ -56,117 +54,22 @@ export function EventModerationDialog({
 
     try {
       if (action === 'promote' && villageSlug) {
-        // Use the new promotion system that adds village tags directly
-        promoteToVillages({
-          event,
-          villages: [villageSlug],
-          reason: reason.trim() || undefined,
-        }, {
-          onSuccess: (result) => {
-            // Publish both the updated event and the promotion label
-            Promise.all([
-              new Promise((resolve, reject) => {
-                publishEvent(result.updatedEvent, {
-                  onSuccess: resolve,
-                  onError: reject,
-                });
-              }),
-              new Promise((resolve, reject) => {
-                publishEvent(result.promotionLabel, {
-                  onSuccess: resolve,
-                  onError: reject,
-                });
-              }),
-            ]).then(() => {
-              toast({
-                title: "Event promoted",
-                description: `Event has been promoted to ${villageSlug} village and will now appear in the village feed.`,
-              });
-
-              if (onPromote) {
-                onPromote();
-              }
-
-              setOpen(false);
-              setReason('');
-            }).catch((error) => {
-              console.error('Failed to publish promotion:', error);
-              toast({
-                title: "Failed to publish",
-                description: "Event promotion couldn't be published. Please try again.",
-                variant: "destructive",
-              });
-            });
-          },
-          onError: (error) => {
-            console.error('Failed to promote event:', error);
-            toast({
-              title: "Promotion failed",
-              description: "Failed to promote event. Please try again.",
-              variant: "destructive",
-            });
-          },
-        });
+        await promoteToVillages({ event, villages: [villageSlug], reason: reason.trim() || undefined });
       } else {
-        // Use the label system for other actions
-        const labels = {
-          hide: 'tribe-hidden',
-          promote: 'village-promoted', // Fallback if no villageSlug
-          feature: 'village-featured',
-        };
-
-        const label = labels[action];
-        const namespace = action === 'hide' ? 'moderation' : 'promotion';
-
         if (event.kind !== 36959 && event.kind !== 31923) throw new Error("Unsupported event kind");
-        createLabel({
+        const labels = { hide: 'tribe-hidden', promote: 'village-promoted', feature: 'village-featured' };
+        await createLabel({
           eventId,
           eventKind: event.kind,
-          label,
-          namespace,
+          label: labels[action],
+          namespace: action === 'hide' ? 'moderation' : 'promotion',
           content: reason.trim() || undefined,
-        }, {
-          onSuccess: (result) => {
-            publishEvent(result.eventData, {
-              onSuccess: () => {
-                const messages = {
-                  hide: 'Event has been hidden from tribe feed.',
-                  promote: 'Event has been promoted to village.',
-                  feature: 'Event has been featured in village.',
-                };
-
-                toast({
-                  title: "Action completed",
-                  description: messages[action],
-                });
-
-                if (action === 'promote' && onPromote) {
-                  onPromote();
-                }
-
-                setOpen(false);
-                setReason('');
-              },
-              onError: (error) => {
-                console.error('Failed to publish moderation action:', error);
-                toast({
-                  title: "Failed to publish",
-                  description: "Moderation action couldn't be published. Please try again.",
-                  variant: "destructive",
-                });
-              },
-            });
-          },
-          onError: (error) => {
-            console.error('Failed to create moderation label:', error);
-            toast({
-              title: "Moderation failed",
-              description: "Failed to create moderation action. Please try again.",
-              variant: "destructive",
-            });
-          },
         });
       }
+      toast({ title: 'Moderation action published' });
+      if (action === 'promote') onPromote?.();
+      setOpen(false);
+      setReason('');
     } catch (error) {
       console.error('Moderation error:', error);
       toast({

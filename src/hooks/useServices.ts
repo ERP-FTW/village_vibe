@@ -1,6 +1,7 @@
 import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { locationTags, readLocation } from '@/lib/location';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -149,8 +150,8 @@ export function useCreateService() {
       tribe: string;
       category: ServiceCategory;
       content: string;
-      lat: number;
-      lon: number;
+      lat?: number;
+      lon?: number;
       area?: string;
       avail?: string;
       time?: string;
@@ -171,7 +172,8 @@ export function useCreateService() {
         ['d', dTag],
         ['tribe', data.tribe],
         ['t', data.category],
-        ['l', `${data.lat.toFixed(4)},${data.lon.toFixed(4)}`], // Round for privacy
+        // Optional, coarse location (geohash cell of about 1 km)
+        ...locationTags(data.lat, data.lon),
         ['alt', `Service ${data.type} for local community help`],
       ];
 
@@ -418,20 +420,17 @@ export function validateServiceEvent(event: NostrEvent): boolean {
   const dTag = event.tags.find(([name]) => name === 'd')?.[1];
   const tribeTag = event.tags.find(([name]) => name === 'tribe')?.[1];
   const categoryTag = event.tags.find(([name]) => name === 't')?.[1];
-  const locationTag = event.tags.find(([name]) => name === 'l')?.[1];
 
-  // Required tags
-  if (!dTag || !tribeTag || !categoryTag || !locationTag) return false;
+  // Required tags (location is optional)
+  if (!dTag || !tribeTag || !categoryTag) return false;
+
+  // Location is optional, but a legacy coordinate tag (two elements, unlike NIP-32
+  // labels which carry a namespace) must parse as "lat,lon"
+  const legacyLocation = event.tags.find(tag => tag[0] === 'l' && tag.length === 2)?.[1];
+  if (legacyLocation !== undefined && !readLocation([['l', legacyLocation]])) return false;
 
   // Validate category
   if (!SERVICE_CATEGORIES.includes(categoryTag as ServiceCategory)) return false;
-
-  // Validate location format (lat,lon)
-  const locationParts = locationTag.split(',');
-  if (locationParts.length !== 2) return false;
-
-  const [lat, lon] = locationParts.map(Number);
-  if (isNaN(lat) || isNaN(lon)) return false;
 
   // Validate content length
   if (event.content.length > 140) return false;
@@ -506,5 +505,6 @@ export function formatDistance(miles: number): string {
   if (miles < 0.25) return '~3 blocks';
   if (miles < 0.5) return '~½ mile';
   if (miles < 1) return '~¾ mile';
-  return `~${Math.round(miles)} mile${miles === 1 ? '' : 's'}`;
+  const rounded = Math.round(miles);
+  return `~${rounded} mile${rounded === 1 ? '' : 's'}`;
 }

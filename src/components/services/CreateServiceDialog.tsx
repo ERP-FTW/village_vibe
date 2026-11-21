@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { useApproximateLocation } from '@/hooks/useApproximateLocation';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -45,8 +46,9 @@ const serviceSchema = z.object({
   timeWindow: z.string().optional(),
   rate: z.string().optional(),
   radius: z.string().optional(),
-  lat: z.number().min(-90).max(90),
-  lon: z.number().min(-180).max(180),
+  // Optional: only an approximate (about 1 km) cell is published
+  lat: z.number().min(-90).max(90).optional(),
+  lon: z.number().min(-180).max(180).optional(),
   villages: z.array(z.string()).optional(),
   expires: z.boolean().optional(),
   expiresDate: z.string().optional(),
@@ -68,14 +70,15 @@ export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }
   const [selectedVillages, setSelectedVillages] = useState<string[]>([]);
   const [newVillage, setNewVillage] = useState('');
 
+  const { request: requestLocation } = useApproximateLocation();
   const form = useForm<ServiceFormData>({
     resolver: zodResolver(serviceSchema),
     defaultValues: {
       type: defaultType,
       category: 'yardwork',
       content: '',
-      lat: 42.3314, // Default to Detroit area
-      lon: -83.0458,
+      lat: undefined,
+      lon: undefined,
       villages: [],
       expires: false,
     },
@@ -261,7 +264,24 @@ export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }
               )}
             />
 
-            {/* Location */}
+            {/* Location (optional) */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Approximate location, so neighbours can filter by distance (optional).</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const here = await requestLocation();
+                  if (here) {
+                    form.setValue('lat', Number(here.lat.toFixed(4)));
+                    form.setValue('lon', Number(here.lon.toFixed(4)));
+                  }
+                }}
+              >
+                Use my location
+              </Button>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -273,9 +293,10 @@ export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }
                       <Input
                         type="number"
                         step="0.0001"
-                        placeholder="42.3314"
+                        placeholder="Optional"
                         {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />
@@ -293,9 +314,10 @@ export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }
                       <Input
                         type="number"
                         step="0.0001"
-                        placeholder="-83.0458"
+                        placeholder="Optional"
                         {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />

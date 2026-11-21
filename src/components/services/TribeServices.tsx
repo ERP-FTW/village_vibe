@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,7 +9,9 @@ import { ServiceFilters } from './ServiceFilters';
 import { CreateServiceDialog } from './CreateServiceDialog';
 import { ServiceDebug } from './ServiceDebug';
 import { RelaySelector } from '@/components/RelaySelector';
-import { useTribeServices, type ServiceFilters as ServiceFiltersType } from '@/hooks/useServices';
+import { calculateDistance, useTribeServices, type ServiceFilters as ServiceFiltersType } from '@/hooks/useServices';
+import { useApproximateLocation } from '@/hooks/useApproximateLocation';
+import { readLocation } from '@/lib/location';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { Plus, HandHeart, HelpCircle, Filter } from 'lucide-react';
@@ -26,10 +28,11 @@ export function TribeServices({ tribeId, className, isModerator = false }: Tribe
   const [filters, setFilters] = useState<ServiceFiltersType>({});
   const [showFilters, setShowFilters] = useState(false);
 
-  // Get user location for distance calculations (simplified)
-  const [userLocation] = useState<{ lat: number; lon: number } | undefined>(
-    { lat: 42.3314, lon: -83.0458 } // Default to Detroit - TODO: implement geolocation API
-  );
+  // The reader's location is only requested when they choose a distance filter
+  const { location: userLocation, error: locationError, request: requestLocation } = useApproximateLocation();
+  useEffect(() => {
+    if (filters.distance && !userLocation) void requestLocation();
+  }, [filters.distance, userLocation, requestLocation]);
 
   const { data: services, isLoading, error } = useTribeServices(tribeId, {
     ...filters,
@@ -59,15 +62,8 @@ export function TribeServices({ tribeId, className, isModerator = false }: Tribe
                          filters.distance === '0.5mi' ? 0.5 : 1;
 
       filtered = filtered.filter(service => {
-        const locationTag = service.tags.find(([name]) => name === 'l')?.[1];
-        if (!locationTag) return false;
-
-        const [lat, lon] = locationTag.split(',').map(Number);
-        const distance = Math.sqrt(
-          Math.pow(lat - userLocation.lat, 2) + Math.pow(lon - userLocation.lon, 2)
-        ) * 69; // Rough miles conversion
-
-        return distance <= maxDistance;
+        const location = readLocation(service.tags);
+        return !!location && calculateDistance(userLocation.lat, userLocation.lon, location.lat, location.lon) <= maxDistance;
       });
     }
 
@@ -196,6 +192,9 @@ export function TribeServices({ tribeId, className, isModerator = false }: Tribe
               filters={filters}
               onFiltersChange={setFilters}
             />
+            {filters.distance && locationError && (
+              <p className="mt-2 text-xs text-muted-foreground">{locationError} The distance filter is off.</p>
+            )}
           </CardContent>
         </Card>
       )}

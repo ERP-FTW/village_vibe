@@ -15,6 +15,7 @@ import { useUserBadgeAwards } from '@/hooks/useBadges';
 import { useCreateServiceMatch } from '@/hooks/useServices';
 import { useTribe } from '@/hooks/useTribes';
 import { extractServiceData, formatDistance, calculateDistance } from '@/hooks/useServices';
+import { readLocation } from '@/lib/location';
 import { genUserName } from '@/lib/genUserName';
 import {
   MapPin,
@@ -60,8 +61,9 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
 
   // Calculate distance if user location is available
   let distance: string | undefined;
-  if (userLocation && serviceData.location) {
-    const [lat, lon] = serviceData.location.split(',').map(Number);
+  const coordinates = readLocation(event.tags);
+  if (userLocation && coordinates) {
+    const { lat, lon } = coordinates;
     const miles = calculateDistance(userLocation.lat, userLocation.lon, lat, lon);
     distance = formatDistance(miles);
   }

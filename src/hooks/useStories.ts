@@ -1,6 +1,7 @@
 import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { locationTags } from '@/lib/location';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -193,9 +194,8 @@ export function useCreateStory() {
       if (data.summary) tags.push(['summary', data.summary]);
       if (data.cover) tags.push(['cover', data.cover]);
       if (data.place) tags.push(['place', data.place]);
-      if (data.lat && data.lon) {
-        tags.push(['l', `${data.lat.toFixed(4)},${data.lon.toFixed(4)}`]);
-      }
+      // Optional, coarse location (geohash cell of about 1 km)
+      tags.push(...locationTags(data.lat, data.lon));
       if (data.refEventId) tags.push(['ref', data.refEventId]);
 
       // Add village tags (only if promoted)

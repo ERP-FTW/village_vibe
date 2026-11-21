@@ -3,6 +3,8 @@ import { useSeoMeta } from '@unhead/react';
 import { useParams } from 'react-router-dom';
 import { useNostr } from '@nostrify/react';
 import { useMultiVillageStories } from '@/hooks/useStories';
+import { coordinateOf } from '@/lib/moderation';
+import { slugifyVillage, villageDisplayName } from '@/lib/villages';
 import { useVillageServices } from '@/hooks/useServices';
 import { useVillageEvents } from '@/hooks/useEvents';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -32,7 +34,9 @@ import type { NostrEvent } from '@nostrify/nostrify';
 import type { VillagePreferences } from '@/hooks/useVillagePreferences';
 
 const VillagePage = () => {
-  const { villageSlug } = useParams<{ villageSlug: string }>();
+  const { villageSlug: rawVillageSlug } = useParams<{ villageSlug: string }>();
+  // Normalise the URL slug the same way village tags are written
+  const villageSlug = rawVillageSlug ? slugifyVillage(rawVillageSlug) : undefined;
   const { user } = useCurrentUser();
   const { preferences } = useVillagePreferences();
 
@@ -44,8 +48,8 @@ const VillagePage = () => {
   const currentVillage = villageSlug || 'main';
 
   useSeoMeta({
-    title: `${currentVillage === 'main' ? 'Village' : `${currentVillage} Village`} - Village Vibe`,
-    description: `Discover stories, events, and services in ${currentVillage === 'main' ? 'your' : currentVillage} village community.`,
+    title: `${currentVillage === 'main' ? 'Village' : `${villageDisplayName(currentVillage)} Village`} - Village Vibe`,
+    description: `Discover stories, events, and services in ${currentVillage === 'main' ? 'your' : villageDisplayName(currentVillage)} village community.`,
   });
 
   // Determine which villages to query based on preferences and URL
@@ -55,24 +59,20 @@ const VillagePage = () => {
       return [villageSlug];
     }
 
-    // If we're on the main village page, use preferences
-    if (preferences.showAllVillages) {
-      return []; // Empty array means show all villages
-    } else {
-      return preferences.selectedVillages.length > 0 ? preferences.selectedVillages : ['mack-eastside']; // Fallback
-    }
+    // On the main village page, use preferences; nothing selected means all villages
+    return preferences.showAllVillages ? [] : preferences.selectedVillages;
   })();
 
-  const { data: stories, isLoading: storiesLoading, error: storiesError } = useMultiVillageStories(villagesToQuery, {
+  const { data: storyFeed, isLoading: storiesLoading, error: storiesError } = useMultiVillageStories(villagesToQuery, {
     search: search.trim() || undefined,
     limit: 20,
   });
 
-  const { data: services, isLoading: servicesLoading, error: servicesError } = useVillageServices(currentVillage, {
+  const { data: services, isLoading: servicesLoading, error: servicesError } = useVillageServices(villagesToQuery, {
     search: search.trim() || undefined,
   });
 
-  const { data: events, isLoading: eventsLoading, error: eventsError } = useVillageEvents(currentVillage, {
+  const { data: events, isLoading: eventsLoading, error: eventsError } = useVillageEvents(villagesToQuery, {
     search: search.trim() || undefined,
   });
 
@@ -93,6 +93,8 @@ const VillagePage = () => {
     return items.filter(item => item.created_at >= threshold);
   };
 
+  const stories = storyFeed?.stories;
+
   // Combine and sort all content
   const allContent = [
     ...(stories || []).map(item => ({ ...item, type: 'story' as const })),
@@ -102,9 +104,9 @@ const VillagePage = () => {
 
   const filteredContent = filterByTime(allContent);
 
-  // Get featured stories (stories with village tags are considered "featured")
+  // Featured stories: ones a moderator of the story's tribe labelled `village-featured`
   const featuredStories = (stories || [])
-    .filter(story => story.tags.some(([name]) => name === 'village'))
+    .filter(story => storyFeed?.featured.includes(coordinateOf(story)))
     .slice(0, 6);
 
   const renderContent = (content: (NostrEvent & { type: 'story' | 'service' | 'event' })[]) => {

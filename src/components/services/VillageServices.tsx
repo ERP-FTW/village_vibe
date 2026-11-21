@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApproximateLocation } from '@/hooks/useApproximateLocation';
+import { villageDisplayName } from '@/lib/villages';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -113,7 +114,7 @@ export function VillageServices({ villageSlug, className }: VillageServicesProps
         <div>
           <div className="flex items-center gap-2 mb-2">
             <MapPin className="h-5 w-5 text-muted-foreground" />
-            <h2 className="text-2xl font-bold capitalize">{villageSlug.replace('-', ' ')}</h2>
+            <h2 className="text-2xl font-bold">{villageDisplayName(villageSlug)}</h2>
           </div>
           <p className="text-muted-foreground">
             {totalServices} service{totalServices !== 1 ? 's' : ''} available

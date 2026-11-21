@@ -34,6 +34,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useCreateService, SERVICE_CATEGORIES, type ServiceType, type ServiceCategory } from '@/hooks/useServices';
+import { slugifyVillage } from '@/lib/villages';
 import { useToast } from '@/hooks/useToast';
 import { Plus, X } from 'lucide-react';
 
@@ -137,10 +138,12 @@ export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }
   };
 
   const addVillage = () => {
-    if (newVillage.trim() && !selectedVillages.includes(newVillage.trim())) {
-      setSelectedVillages([...selectedVillages, newVillage.trim()]);
-      setNewVillage('');
+    // Store villages in the same slug form used by tags and village URLs
+    const slug = slugifyVillage(newVillage);
+    if (slug && !selectedVillages.includes(slug)) {
+      setSelectedVillages([...selectedVillages, slug]);
     }
+    setNewVillage('');
   };
 
   const removeVillage = (village: string) => {
@@ -403,6 +406,9 @@ export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }
             {/* Villages */}
             <div className="space-y-2">
               <FormLabel>Villages (Optional)</FormLabel>
+              <p className="text-xs text-muted-foreground">
+                Shows in a village feed when your tribe is associated with that village, or once a tribe moderator promotes it.
+              </p>
               <div className="flex gap-2">
                 <Input
                   placeholder="Add village..."

@@ -94,7 +94,7 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
               <h3 className="text-lg font-semibold">{otherUserName}</h3>
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Lock className="h-3 w-3" />
-                <span title="Message text is encrypted (NIP-04). Who you message and when is visible on relays.">Encrypted message text</span>
+                <span title="New messages are sent as NIP-17 gift wraps when your signer supports NIP-44, which hides who you message and when. Older or fallback NIP-04 messages only encrypt the text.">Private messages</span>
               </div>
             </div>
           </CardTitle>

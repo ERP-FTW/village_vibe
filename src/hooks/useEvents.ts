@@ -1,4 +1,6 @@
-import { useSendDirectMessage } from './useSendDirectMessage';
+import { useRetryDirectMessage, useSendDirectMessage } from './useSendDirectMessage';
+import { retryInvitations, sendInvitations, type InvitationOutcome } from '@/lib/invitations';
+import { lookupInboxesCached } from '@/lib/dmDelivery';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
 import { locationTags } from '@/lib/location';
@@ -481,8 +483,11 @@ Organizer: ${data.organizer}
 The organizer shared these details with you in an encrypted message. The event listing itself is public; please don't repost these details.`;
 }
 
-// Hook to send private event details via DM
+export { invitationsComplete, type InvitationOutcome } from '@/lib/invitations';
+
+// Hook to send private event details via DM, reporting what reached whom
 export function useSendPrivateEventDetails() {
+  const { nostr } = useNostr();
   const { mutateAsync: send } = useSendDirectMessage();
   return useMutation({
     mutationFn: async (data: {
@@ -492,13 +497,21 @@ export function useSendPrivateEventDetails() {
       privateDetails: string;
       exactLocation?: string;
       organizer: string;
-    }) => {
-      const dmContent = buildPrivateDetailsMessage(data);
-      const sent = await Promise.allSettled([...new Set(data.invitees)].map(recipient =>
-        send({ recipient, message: dmContent })
-      ));
-      return sent.filter(outcome => outcome.status === 'rejected').length;
+    }): Promise<InvitationOutcome> => {
+      const message = buildPrivateDetailsMessage(data);
+      // One inbox lookup for the whole batch (every invitee and the organizer's own copies)
+      await lookupInboxesCached(nostr, [...new Set(data.invitees), data.organizer]);
+      return sendInvitations(send, data.eventId, data.invitees, message);
     },
+  });
+}
+
+// Retry only the invitations (or the organizer's copies) that didn't go through
+export function useRetryInvitations() {
+  const { mutateAsync: send } = useSendDirectMessage();
+  const { mutateAsync: retry } = useRetryDirectMessage();
+  return useMutation({
+    mutationFn: (outcome: InvitationOutcome): Promise<InvitationOutcome> => retryInvitations(outcome, send, retry),
   });
 }
 

@@ -3,7 +3,8 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUploadFile } from "@/hooks/useUploadFile";
 import { PublicFieldsNotice } from "@/components/privacy/PublicFieldsNotice";
 import { EVENT_PUBLIC_FIELDS } from "@/lib/publicFields";
-import { useCreateEnhancedEvent, useSendPrivateEventDetails, type EventType, type EventVisibility, getEventTypeInfo, EVENT_TYPES } from "@/hooks/useEvents";
+import { InvitationRecovery } from "./InvitationRecovery";
+import { useCreateEnhancedEvent, useSendPrivateEventDetails, useRetryInvitations, invitationsComplete, type InvitationOutcome, type EventType, type EventVisibility, getEventTypeInfo, EVENT_TYPES } from "@/hooks/useEvents";
 import { usePublicTribes } from "@/hooks/useTribes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -368,6 +369,37 @@ function TypeSpecificFields({ formData, setFormData }: {
   );
 }
 
+const EMPTY_EVENT_FORM: EventFormData = {
+  title: '',
+  summary: '',
+  description: '',
+  place: '',
+  image: '',
+  date: '',
+  time: '',
+  duration: '60', // minutes
+  etypes: [] as EventType[], // Start with no types selected
+  visibility: 'public' as EventVisibility,
+  villages: [] as string[],
+  invitees: [] as string[],
+  privateDetails: '',
+  exactLocation: '',
+  sendDMs: true,
+  enableZaps: false,
+  enableComments: true,
+  autoPromptStory: true,
+  // Type-specific data
+  foodSlots: [] as string[],
+  dietNotes: '',
+  tasks: [] as string[],
+  toolsNeeded: '',
+  instructors: [] as string[],
+  materials: '',
+  gameKind: '',
+  teamsMode: 'auto' as 'auto' | 'custom',
+  occasion: '',
+};
+
 export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps) {
   const { user } = useCurrentUser();
   usePublicTribes(); // Keep hook active for potential future use
@@ -378,36 +410,16 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
 
   const [open, setOpen] = useState(false);
 
-  const [formData, setFormData] = useState<EventFormData>({
-    title: '',
-    summary: '',
-    description: '',
-    place: '',
-    image: '',
-    date: '',
-    time: '',
-    duration: '60', // minutes
-    etypes: [] as EventType[], // Start with no types selected
-    visibility: 'public' as EventVisibility,
-    villages: [] as string[],
-    invitees: [] as string[],
-    privateDetails: '',
-    exactLocation: '',
-    sendDMs: true,
-    enableZaps: false,
-    enableComments: true,
-    autoPromptStory: true,
-    // Type-specific data
-    foodSlots: [] as string[],
-    dietNotes: '',
-    tasks: [] as string[],
-    toolsNeeded: '',
-    instructors: [] as string[],
-    materials: '',
-    gameKind: '',
-    teamsMode: 'auto' as 'auto' | 'custom',
-    occasion: '',
-  });
+  const [formData, setFormData] = useState<EventFormData>(EMPTY_EVENT_FORM);
+  // Set when the event was published but some invitations didn't go through
+  const [invitationRecovery, setInvitationRecovery] = useState<InvitationOutcome | null>(null);
+  const { mutateAsync: retryInvitations, isPending: isRetryingInvites } = useRetryInvitations();
+
+  const finish = () => {
+    setOpen(false);
+    setInvitationRecovery(null);
+    setFormData(EMPTY_EVENT_FORM);
+  };
 
 
 
@@ -544,49 +556,23 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
         invitees: formData.invitees,
         typeSpecificData,
       });
-      let failed = 0;
       if (formData.visibility === 'private' && formData.sendDMs && formData.invitees.length) {
-        failed = await sendPrivateDetails({
+        const outcome = await sendPrivateDetails({
           eventId: result.eventId, eventTitle: formData.title.trim(), invitees: formData.invitees,
           privateDetails: formData.privateDetails.trim() || 'See you there!',
           exactLocation: formData.exactLocation.trim() || formData.place.trim(), organizer: user.pubkey,
         });
+        if (!invitationsComplete(outcome)) {
+          // Keep the dialog (and the draft) open so only the missing invitations are retried
+          setInvitationRecovery(outcome);
+          toast({ title: 'Event published', description: 'Some invitations did not go through. You can retry them.', variant: 'destructive' });
+          return;
+        }
+        toast({ title: 'Event published', description: `Private details delivered to all ${outcome.deliveries.length} invitee(s).` });
+      } else {
+        toast({ title: 'Event published', description: 'Your event has been published.' });
       }
-      toast({
-        title: 'Event published',
-        description: failed ? `Private details could not be delivered to ${failed} invitee(s).` : 'Your event has been published.',
-        variant: failed ? 'destructive' : 'default',
-      });
-      setOpen(false);
-      setFormData({
-        title: '',
-        summary: '',
-        description: '',
-        place: '',
-        image: '',
-        date: '',
-        time: '',
-        duration: '60',
-        etypes: [],
-        visibility: 'public',
-        villages: [],
-        invitees: [],
-        privateDetails: '',
-        exactLocation: '',
-        sendDMs: true,
-        enableZaps: false,
-        enableComments: true,
-        autoPromptStory: true,
-        foodSlots: [],
-        dietNotes: '',
-        tasks: [],
-        toolsNeeded: '',
-        instructors: [],
-        materials: '',
-        gameKind: '',
-        teamsMode: 'auto',
-        occasion: '',
-      });
+      finish();
     } catch (error) {
       console.error('❌ CATCH BLOCK - Error creating event:', error);
       console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
@@ -629,7 +615,7 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
 
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => next ? setOpen(true) : (invitationRecovery ? finish() : setOpen(false))}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
@@ -638,6 +624,22 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
           <DialogTitle>Create New Event 📅</DialogTitle>
         </DialogHeader>
 
+        {invitationRecovery ? (
+          <InvitationRecovery
+            outcome={invitationRecovery}
+            retrying={isRetryingInvites}
+            onClose={finish}
+            onRetry={async () => {
+              const next = await retryInvitations(invitationRecovery);
+              if (invitationsComplete(next)) {
+                toast({ title: 'Invitations delivered', description: 'Every invitee now has the private details.' });
+                finish();
+              } else {
+                setInvitationRecovery(next);
+              }
+            }}
+          />
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Info */}
           <div className="space-y-4">
@@ -898,6 +900,7 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
             </Button>
           </div>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );

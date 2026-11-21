@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useDirectMessages } from "@/hooks/useDirectMessages";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useSendDirectMessage } from "@/hooks/useSendDirectMessage";
+import { useRetryDirectMessage, useSendDirectMessage } from "@/hooks/useSendDirectMessage";
+import { DeliveryStatus } from "./DeliveryStatus";
+import { deliveryStatusText } from "@/lib/dmDelivery";
 import { useAuthor } from "@/hooks/useAuthor";
 import { useToast } from "@/hooks/useToast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +25,7 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
   const { data: messages, isLoading } = useDirectMessages(otherUserPubkey);
   const { data: otherUser } = useAuthor(otherUserPubkey);
   const { mutateAsync: sendMessage, isPending: isSending } = useSendDirectMessage();
+  const { mutate: retryDelivery, isPending: isRetrying, variables: retryingDelivery } = useRetryDirectMessage();
   const { toast } = useToast();
   
   const [newMessage, setNewMessage] = useState("");
@@ -45,11 +48,13 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
 
     if (isSending) return;
     try {
-      await sendMessage({ recipient: otherUserPubkey, message: newMessage.trim() });
+      const delivery = await sendMessage({ recipient: otherUserPubkey, message: newMessage.trim() });
 
+      // The message now shows in the conversation with its delivery state and any retry action
       setNewMessage(current => current === newMessage ? "" : current);
-      
-
+      if (delivery.recipient.status === 'failed') {
+        toast({ title: 'Message not delivered', description: deliveryStatusText(delivery).text, variant: 'destructive' });
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -148,6 +153,14 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
                       <p className="text-sm whitespace-pre-wrap break-words">
                         {message.content}
                       </p>
+                      {message.delivery && (
+                        <DeliveryStatus
+                          delivery={message.delivery}
+                          onRetry={() => message.delivery && retryDelivery(message.delivery)}
+                          retrying={isRetrying && retryingDelivery === message.delivery}
+                          className="text-primary-foreground/90"
+                        />
+                      )}
                       <p
                         className={cn(
                           "text-xs mt-1",

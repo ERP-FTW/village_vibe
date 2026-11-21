@@ -6,6 +6,8 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { inboxRelaysFrom, SignerUnavailableError, supportsNip17, unwrapDirectMessage, type Rumor } from '@/lib/nip17';
 import { readRelayUrls } from '@/lib/RelayPool';
 import { useAppContext } from '@/hooks/useAppContext';
+import { useDmOutbox } from '@/hooks/useSendDirectMessage';
+import { messageIdOf, messageTextOf, messageTimeOf, type MessageDelivery } from '@/lib/dmDelivery';
 
 export interface DecryptedMessage {
   id: string;
@@ -17,6 +19,11 @@ export interface DecryptedMessage {
   decryptError?: boolean;
   /** 'nip17' for gift-wrapped messages, 'nip04' for legacy kind 4. */
   protocol: 'nip17' | 'nip04';
+  /**
+   * Set for a message sent in this session that relays haven't returned yet: what was
+   * delivered, and the signed events to retry the rest with.
+   */
+  delivery?: MessageDelivery;
 }
 
 /** Decrypted NIP-04 content keyed by `${viewer}:${eventId}`; lives for the page session only. */
@@ -121,6 +128,7 @@ export function useDirectMessages(otherUserPubkey?: string) {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
   const inbox = useGiftWrappedInbox();
+  const outbox = useDmOutbox(otherUserPubkey);
 
   const legacy = useQuery({
     queryKey: ['direct-messages', user?.pubkey, otherUserPubkey],
@@ -182,7 +190,8 @@ export function useDirectMessages(otherUserPubkey?: string) {
   // Merged only when either source changes: a new array on every render would retrigger
   // effects that depend on the message list (e.g. scrolling to the newest message).
   const data = useMemo(() => {
-    if (!legacy.data && !inbox.data) return undefined;
+    // Messages sent this session show even if both history reads failed
+    if (!legacy.data && !inbox.data && !outbox.length) return undefined;
     const giftWrapped: DecryptedMessage[] = me && otherUserPubkey
       ? (inbox.data ?? [])
         .filter(rumor => partnerOf(rumor, me) === otherUserPubkey)
@@ -196,9 +205,27 @@ export function useDirectMessages(otherUserPubkey?: string) {
           protocol: 'nip17' as const,
         }))
       : [];
+    const fetched = [...(legacy.data ?? []), ...giftWrapped];
+    // Messages sent this session stay visible (with their delivery state) until relays
+    // return them, e.g. when the recipient got one but the sender's own copy failed.
+    const fetchedIds = new Set(fetched.map(message => message.id));
+    const sent: DecryptedMessage[] = me && otherUserPubkey
+      ? outbox
+        .filter(delivery => !fetchedIds.has(messageIdOf(delivery.prepared)))
+        .map(delivery => ({
+          id: messageIdOf(delivery.prepared),
+          content: messageTextOf(delivery.prepared),
+          created_at: messageTimeOf(delivery.prepared),
+          sender: me,
+          recipient: otherUserPubkey,
+          isFromMe: true,
+          protocol: delivery.prepared.protocol,
+          delivery,
+        }))
+      : [];
     // Oldest first for chat display
-    return [...(legacy.data ?? []), ...giftWrapped].sort((a, b) => a.created_at - b.created_at);
-  }, [legacy.data, inbox.data, me, otherUserPubkey]);
+    return [...fetched, ...sent].sort((a, b) => a.created_at - b.created_at);
+  }, [legacy.data, inbox.data, outbox, me, otherUserPubkey]);
 
   return {
     data,
@@ -212,6 +239,7 @@ export function useConversations() {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
   const inbox = useGiftWrappedInbox();
+  const outbox = useDmOutbox();
 
   const legacy = useQuery({
     queryKey: ['conversations', user?.pubkey],
@@ -244,7 +272,8 @@ export function useConversations() {
   // Merge legacy and NIP-17 conversations, keeping each partner's latest message time
   const me = user?.pubkey;
   const data = useMemo(() => {
-    if (!legacy.data && !inbox.data) return undefined;
+    // Conversations started this session show even if both history reads failed
+    if (!legacy.data && !inbox.data && !outbox.length) return undefined;
     const latest = new Map<string, number>();
     for (const { pubkey, lastMessageAt } of legacy.data ?? []) latest.set(pubkey, lastMessageAt);
     if (me) {
@@ -253,9 +282,13 @@ export function useConversations() {
         if (partner && rumor.created_at > (latest.get(partner) ?? 0)) latest.set(partner, rumor.created_at);
       }
     }
+    // Conversations started this session, even if relays don't have the sender's copy
+    for (const { prepared } of outbox) {
+      if (messageTimeOf(prepared) > (latest.get(prepared.recipient) ?? 0)) latest.set(prepared.recipient, messageTimeOf(prepared));
+    }
     return Array.from(latest, ([pubkey, lastMessageAt]) => ({ pubkey, lastMessageAt }))
       .sort((a, b) => b.lastMessageAt - a.lastMessageAt);
-  }, [legacy.data, inbox.data, me]);
+  }, [legacy.data, inbox.data, outbox, me]);
 
   return {
     data,

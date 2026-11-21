@@ -51,10 +51,13 @@ async function loadTribes(nostr: NPool, events: NostrEvent[], signal: AbortSigna
 
 /**
  * Village eligibility. Content may appear in village V when:
- * - its tribe is associated with V (the tribe creator added V to the tribe), or
+ * - its tribe is associated with V (the tribe creator added V to the tribe) and the
+ *   author belongs to that tribe, or
  * - its author is a moderator of its tribe (moderators' own village tags count), or
  * - a moderator of its tribe promoted it to V with a `village-promoted` label.
- * Self-applied village tags from anyone else, and labels from non-moderators, are ignored.
+ * "Its tribe" means the tribe named by the content's `a` coordinate with the author as
+ * a member. Self-applied village tags from anyone else, labels from non-moderators, and
+ * moderator authority derived from ambiguous legacy d tags are ignored.
  */
 export function makeVillageTrust(tribes: NostrEvent[]) {
   const byCoordinate = new Map(tribes.map(tribe => [coordinateOf(tribe), tribe]));
@@ -63,16 +66,24 @@ export function makeVillageTrust(tribes: NostrEvent[]) {
     const d = tribe.tags.find(([name]) => name === 'd')?.[1] ?? '';
     byD.set(d, [...(byD.get(d) ?? []), tribe]);
   }
-  const tribesOf = (event: NostrEvent): NostrEvent[] => {
+  /**
+   * Tribes vouching for content. Only an author-qualified tribe coordinate (`a` tag) gives
+   * moderator authority, and only when the content's author is a member of that tribe.
+   * Legacy content names just a d tag, which anyone can reuse for a look-alike tribe, so
+   * such matches only honour the author's own village tags (when the tribe is associated
+   * with the village) and never grant moderator authority.
+   */
+  const authenticatedTribes = (event: NostrEvent): NostrEvent[] => tribeRefs(event).coordinates
+    .map(coordinate => byCoordinate.get(coordinate))
+    .filter((tribe): tribe is NostrEvent => !!tribe && tribeMembers(tribe).has(event.pubkey));
+  const legacyTribes = (event: NostrEvent): NostrEvent[] => {
     const { coordinates, legacyD } = tribeRefs(event);
-    return coordinates.length
-      ? coordinates.map(coordinate => byCoordinate.get(coordinate)).filter((tribe): tribe is NostrEvent => !!tribe)
-      // Legacy content only names a d tag: trust only tribes the author belongs to.
-      : (byD.get(legacyD ?? '') ?? []).filter(tribe => tribeMembers(tribe).has(event.pubkey));
+    if (coordinates.length || !legacyD) return [];
+    return (byD.get(legacyD) ?? []).filter(tribe => tribeMembers(tribe).has(event.pubkey));
   };
-  const moderatorsOf = (event: NostrEvent) => new Set(tribesOf(event).flatMap(tribeModerators));
-  const associatedVillages = (event: NostrEvent) => new Set(tribesOf(event).flatMap(tribe =>
-    tribe.tags.filter(([name]) => name === 'village').map(([, value]) => slugifyVillage(value ?? ''))));
+  const moderatorsOf = (event: NostrEvent) => new Set(authenticatedTribes(event).flatMap(tribeModerators));
+  const associatedVillages = (event: NostrEvent) => new Set([...authenticatedTribes(event), ...legacyTribes(event)]
+    .flatMap(tribe => tribe.tags.filter(([name]) => name === 'village').map(([, value]) => slugifyVillage(value ?? ''))));
 
   /** Villages the content is allowed into, given the labels referencing it. */
   const allowedVillages = (event: NostrEvent, labels: NostrEvent[]): Set<string> => {

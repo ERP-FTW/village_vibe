@@ -19,7 +19,9 @@ Events (36959, 31923), stories (30023) and services (38857, 30627) are linked to
   - its author is a moderator of its tribe;
   - a moderator of its tribe published a `village-promoted` label (kind 1985) that references the content and carries `["village", V]`.
 
-  Self-applied village tags from anyone else, and labels from non-moderators, are ignored. `village-featured` labels from the tribe's moderators mark content as featured in the villages they name.
+  "Its tribe" is the tribe named by the content's `a` coordinate, with the author as a member. Self-applied village tags from anyone else, and labels from non-moderators, are ignored. `village-featured` labels from the tribe's moderators mark content as featured in the villages they name.
+- Legacy content names only the tribe's d tag, which a look-alike tribe can reuse. Such content therefore only gets in through rule 1 (an associated tribe the author belongs to), and never through moderator authority.
+- Villages have no owners: any tribe creator can associate a tribe with a village. Readers can hide tribes from their village feed.
 - Content from before the indexed tags is found through its authors (tribe feeds) or the legacy `village` tag (village feeds).
 
 ## Stories (NIP-23 Extension)

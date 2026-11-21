@@ -32,11 +32,13 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
   const otherUserName = otherUserMetadata?.name || otherUserMetadata?.display_name || genUserName(otherUserPubkey);
 
   // Keep the newest message in view by scrolling the message pane only (not the page)
-  const messageCount = messages?.length ?? 0;
+  // (re-run when the conversation or its newest message changes, not just the count,
+  // which stays the same once the history limit is reached)
+  const newestMessageId = messages?.[messages.length - 1]?.id;
   useEffect(() => {
     const viewport = scrollAreaRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]');
     if (viewport) viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
-  }, [messageCount]);
+  }, [otherUserPubkey, newestMessageId]);
 
   const handleSendMessage = async () => {
     if (!user || !newMessage.trim()) return;

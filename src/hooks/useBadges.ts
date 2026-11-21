@@ -3,19 +3,30 @@ import { useQuery } from '@tanstack/react-query';
 import type { NostrEvent, NStore } from '@nostrify/nostrify';
 import { batcherPerStore, createBatcher } from '@/lib/batcher';
 
-/** Badge award (kind 8) lookups for many users are merged into one request. */
+/**
+ * Badge award (kind 8) lookups for many users are merged into one request, with a filter
+ * per user so each keeps its own limit (one user's many awards cannot crowd out another's).
+ * Users still without awards get one follow-up request, in case the combined request
+ * completed before a slower relay answered for them.
+ */
 const awardLoader = batcherPerStore((nostr: NStore) => createBatcher<string, NostrEvent[]>(async (pubkeys) => {
-  const wanted = new Set(pubkeys);
-  const awards = (await nostr.query([{ kinds: [8], '#p': pubkeys, limit: pubkeys.length * 20 }]))
-    .filter(validateBadgeAward);
   const byUser = new Map<string, NostrEvent[]>(pubkeys.map(pubkey => [pubkey, []]));
-  for (const award of awards) {
-    for (const [name, pubkey] of award.tags) {
-      if (name === 'p' && wanted.has(pubkey)) byUser.get(pubkey)?.push(award);
+  const seen = new Set<string>();
+  const collect = (awards: NostrEvent[]) => {
+    for (const award of awards.filter(validateBadgeAward)) {
+      if (seen.has(award.id)) continue;
+      seen.add(award.id);
+      for (const [name, pubkey] of award.tags) {
+        if (name === 'p') byUser.get(pubkey)?.push(award);
+      }
     }
-  }
+  };
+  const query = (keys: string[]) => nostr.query(keys.map(pubkey => ({ kinds: [8], '#p': [pubkey], limit: 100 })));
+  collect(await query(pubkeys));
+  const missing = pubkeys.filter(pubkey => !byUser.get(pubkey)?.length);
+  if (missing.length && missing.length < pubkeys.length) collect(await query(missing).catch(() => []));
   return byUser;
-}));
+}, { maxBatch: 20 }));
 
 // Hook to get badge awards for a user
 export function useUserBadgeAwards(userPubkey: string) {

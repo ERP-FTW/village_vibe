@@ -1,6 +1,7 @@
 import { useSendDirectMessage } from './useSendDirectMessage';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -75,15 +76,18 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
       const tribe = tribeQuery.data ?? null;
       const authors = tribe ? tribeEventAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
 
+      const allowed = new Set(tribe ? tribeEventAuthors(tribe) : [pubkey]);
       const moderators = tribe ? tribeModerators(tribe) : [pubkey];
       const records = await dropHidden(nostr, await nostr.query([
+        // Indexed: events tagged with the tribe coordinate (any size of tribe)
+        { kinds: [36959, 31923], '#a': [tribeCoordinate(tribeId)], limit: (filters.limit || 100) + 100 },
+        // Legacy: events from before the indexed tag, found through their authors
         { kinds: [36959], authors, limit: filters.limit || 100 },
         { kinds: [31923], authors, limit: 100 },
       ], { signal }), moderators, signal);
-      let validEvents = records.filter(event => event.tags.some(([name, value]) =>
-        (name === 'tribe' && (value === dTag || value === tribeId)) ||
-        (event.kind === 31923 && name === 'a' && value === `34550:${tribeId}`)
-      ) && (event.kind === 36959 ? validateEnhancedEvent(event) : validateCalendarEvent(event)));
+      let validEvents = records.filter(event =>
+        allowed.has(event.pubkey) && belongsToTribe(event.tags, tribeId)
+        && (event.kind === 36959 ? validateEnhancedEvent(event) : validateCalendarEvent(event)));
 
       validEvents = applyEventFilters(validEvents, queryFilters, user?.pubkey);
 
@@ -281,15 +285,12 @@ export function usePromoteEventToVillages() {
       const eventId = `${event.pubkey}:${dTag}`;
 
       // Get existing village tags
-      const existingVillageTags = event.tags.filter(([name]) => name === 'village').map(([, value]) => value);
+      const existingVillageTags = villagesOf(event.tags);
       const newVillages = villages.filter(v => !existingVillageTags.includes(v));
       const allVillages = [...existingVillageTags, ...newVillages];
 
       // Create updated event with village tags
-      const updatedTags = [
-        ...event.tags.filter(([name]) => name !== 'village'), // Remove existing village tags
-        ...allVillages.map(village => ['village', village]), // Add all village tags
-      ];
+      const updatedTags = withVillageTags(event.tags, allVillages);
 
       const updatedEvent = {
         kind: event.kind,
@@ -378,15 +379,11 @@ export function useCreateEnhancedEvent() {
       // Generate a unique d tag if not provided (for updates)
       const dTag = data.dTag || `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      // Parse tribeId to determine tribe tag format
-      // If tribe is in format "pubkey:dTag", use dTag part for tribe tag
-      // If tribe is just dTag, use it as-is
-      const tribeTagValue = data.tribe.includes(':') ? data.tribe.split(':')[1] : data.tribe;
-
       // Build tags array
       const tags: string[][] = [
         ['d', dTag],
-        ['tribe', tribeTagValue], // Use dTag part for tribe tag
+        // Indexed tribe coordinate plus the legacy d-tag reference
+        ...tribeLinkTags(data.tribe),
         ['title', data.title],
         ...(data.summary ? [['summary', data.summary]] : []),
         ['start', data.start.toString()],
@@ -411,12 +408,8 @@ export function useCreateEnhancedEvent() {
         tags.push(['etype', etype]);
       });
 
-      // Add village tags
-      if (data.villages && data.villages.length > 0) {
-        data.villages.forEach(village => {
-          tags.push(['village', village]);
-        });
-      }
+      // Add village tags (legacy + indexed)
+      tags.splice(0, tags.length, ...withVillageTags(tags, data.villages ?? []));
 
       // Add invitees for private events
       if (data.visibility === 'private' && data.invitees && data.invitees.length > 0) {

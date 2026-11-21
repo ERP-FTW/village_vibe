@@ -2,6 +2,20 @@
 
 This document describes the custom Nostr event kinds and extensions used by Village Vibe for community stories, events, services, and village aggregation.
 
+## Linking Content to Tribes and Villages
+
+Events (36959, 31923), stories (30023) and services (38857, 30627) are linked to their tribe and villages with relay-indexed single-letter tags. Each link is also written in the legacy multi-letter form, so older clients keep working.
+
+| Link | Indexed tags (query with) | Legacy tag (still written) |
+|---|---|---|
+| Tribe | `["a", "34550:<tribe-owner-pubkey>:<tribe-d-tag>"]` (`#a`) | `["tribe", "<tribe-d-tag>"]` |
+| Village | `["t", "village"]` and `["t", "village-<slug>"]` (`#t`) | `["village", "<slug>"]` |
+
+- Village slugs are lowercase ASCII words joined by `-`, for example `east-side`.
+- A tribe feed accepts content tagged with the tribe coordinate only from the tribe's members. Events are accepted only from the owner, admins, moderators and event creators.
+- A tribe feed drops content that a tribe moderator has labelled `tribe-hidden` (kind 1985).
+- Content from before the indexed tags is found through its authors (tribe feeds) or the legacy `village` tag (village feeds).
+
 ## Stories (NIP-23 Extension)
 
 Village Vibe uses **kind 30023** (Long-form Content from NIP-23) for community stories with the following extensions:
@@ -294,6 +308,14 @@ Addressable event recording event results and impact.
 
 **Content:** Outcome description or story
 
+### Coordination Trust Rules
+
+- Roles (38401), items (38403), actions (38405) and outcomes (38407) count only when authored by the event organizer or by a moderator of the event's tribe. The tribe must be named by the event's `a` coordinate (`34550:<owner>:<d>`), and the organizer must be a member of it. A bare `tribe` d tag never grants moderator trust.
+- Role and item claims (38402, 38404) use the d tag `claim-<role-or-item-id>-<claimer-pubkey>`, so each person has one claim per role or item. To withdraw, republish the claim with `["status", "withdrawn"]`.
+- Fills count distinct people with an active claim. An item claim's `quantity` is the claimer's total for that item, and item totals sum those per person.
+- Legacy item claims (any other d tag) were published once per submission with only the added quantity. Until a person publishes their canonical `claim-<item-id>-<pubkey>` claim, their legacy claims for that item are summed. Once it exists, the canonical claim replaces them, so clients must fold any legacy quantity into the first canonical total.
+- An action update (38406) counts only when authored by the organizer, a trusted tribe moderator, the action's creator or its assignee. The newest one wins.
+
 ## Implementation Notes
 
 1. **Privacy**: Location coordinates are rounded to 4 decimal places (~11m precision) for privacy
@@ -404,3 +426,42 @@ Addressable event recording event results and impact.
   "id": "..."
 }
 ```
+## Tribes (NIP-72 Communities, Kind 34550)
+
+Tribes are NIP-72 community definitions. Only the creator's key can replace the definition. Clients must refuse to publish one from another key: that would create a separate community under that key.
+
+| Tag | Meaning |
+|---|---|
+| `["d", "<id>"]` | Identifier; the tribe id used in URLs is `<creator-pubkey>:<d>` |
+| `["name", …]`, `["description", …]`, `["image", …]`, `["location", …]` | Display fields |
+| `["t", "tribe"]` | Discovery tag |
+| `["public"]` / `["private"]` | Listed in discovery, or only shown to members |
+| `["open"]` / `["closed"]` | Informational; joining always goes through a request |
+| `["p", "<pubkey>", "<relay>", "<role>"]` | Member, one tag per member. Role is `admin`, `moderator`, `event_creator` or `member`. The creator is always treated as an admin. |
+| `["village", "<slug>"]` | Villages the tribe is associated with (see village feed rules) |
+
+Before republishing, clients fetch the newest definition and write a `created_at` later than it, so concurrent changes don't overwrite each other.
+
+### Join Requests (Kind 9021) and Rejections (Kind 9022)
+
+- **Join request (9021):** published by the requester, with `["h", "<creator-pubkey>:<d>"]` and `["p", "<creator-pubkey>"]`. The creator approves by adding the requester's `p` tag to the tribe definition.
+- **Rejection (9022):** published by a tribe moderator, with `["h", …]`, `["p", "<requester>"]` and `["e", "<request-id>"]`. Only rejections from the tribe's admins and moderators count.
+
+Note that NIP-29 defines kind 9022 as a "leave request". Village Vibe's tribes are NIP-72 communities, not NIP-29 groups, so the two don't interact, but the kind number overlaps.
+
+## Event Check-ins (Kind 2073)
+
+Published by an attendee who entered the host's check-in code.
+
+| Tag | Meaning |
+|---|---|
+| `["a", "<event-kind>:<host-pubkey>:<d>"]` | The event (36959 or 31923) |
+| `["e", "<event-id>"]`, `["p", "<host-pubkey>"]` | Event revision and host |
+| `["nonce", "<13-digit code>"]` | Code shown by the host |
+| `["verified_at", "<unix>"]` | Time of check-in |
+
+Check-ins are self-reported. The code is generated in the host's client and not verified by anyone else, so clients label them as such.
+
+## Profile Privacy (Kind 30078, NIP-78)
+
+Addressable app data with `["d", "profile-privacy"]`. The content is JSON: `{"showBasicInfo": boolean, "showTribes": boolean, "showBadges": boolean}`. These settings only control what Village Vibe shows on its own profile page. Kind 0 metadata, badge awards and tribe membership remain public on Nostr.

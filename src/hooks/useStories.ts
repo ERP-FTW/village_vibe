@@ -1,6 +1,7 @@
 import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -48,11 +49,15 @@ export function useTribeStories(tribeId: string, filters: StoryFilters = {}) {
       const tribe = tribeQuery.data ?? null;
       const authors = tribe ? tribeMemberAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
       const moderators = tribe ? tribeModerators(tribe) : [pubkey];
+      const allowed = new Set(tribe ? tribeMemberAuthors(tribe) : [pubkey]);
       const records = await dropHidden(nostr, await nostr.query([
+        // Indexed: stories tagged with the tribe coordinate
+        { kinds: [30023], '#a': [tribeCoordinate(tribeId)], limit: 200 },
+        // Legacy: stories from before the indexed tag, found through their authors
         { kinds: [30023], authors, limit: 200 },
       ], { signal }), moderators, signal);
       const filteredEvents = records.filter(event =>
-        event.tags.some(([name, value]) => name === 'tribe' && value === dTag));
+        allowed.has(event.pubkey) && belongsToTribe(event.tags, tribeId));
 
       const validEvents = filteredEvents.filter(validateStoryEvent);
 
@@ -184,7 +189,8 @@ export function useCreateStory() {
       // Build tags array
       const tags: string[][] = [
         ['d', dTag],
-        ['tribe', data.tribe],
+        // Indexed tribe coordinate plus the legacy d-tag reference
+        ...tribeLinkTags(data.tribe),
         ['title', data.title],
         ['alt', 'Community story shared with the village'],
       ];
@@ -198,12 +204,8 @@ export function useCreateStory() {
       }
       if (data.refEventId) tags.push(['ref', data.refEventId]);
 
-      // Add village tags (only if promoted)
-      if (data.villages && data.villages.length > 0) {
-        data.villages.forEach(village => {
-          tags.push(['village', village]);
-        });
-      }
+      // Add village tags (legacy + indexed)
+      tags.splice(0, tags.length, ...withVillageTags(tags, data.villages ?? []));
 
       // Create the event
       const eventData = {
@@ -300,15 +302,12 @@ export function usePromoteStoryToVillages() {
       const storyId = `${story.pubkey}:${dTag}`;
 
       // Get existing village tags
-      const existingVillageTags = story.tags.filter(([name]) => name === 'village').map(([, value]) => value);
+      const existingVillageTags = villagesOf(story.tags);
       const newVillages = villages.filter(v => !existingVillageTags.includes(v));
       const allVillages = [...existingVillageTags, ...newVillages];
 
       // Create updated story with village tags
-      const updatedTags = [
-        ...story.tags.filter(([name]) => name !== 'village'), // Remove existing village tags
-        ...allVillages.map(village => ['village', village]), // Add all village tags
-      ];
+      const updatedTags = withVillageTags(story.tags, allVillages);
 
       const updatedStory = {
         kind: 30023,

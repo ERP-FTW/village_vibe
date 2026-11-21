@@ -94,11 +94,9 @@ export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }
       return;
     }
 
-    const [, dTag] = tribeId.split(':');
-
     const serviceData = {
       type: data.type,
-      tribe: dTag,
+      tribe: tribeId,
       category: data.category,
       content: data.content,
       lat: data.lat,

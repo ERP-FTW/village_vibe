@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { NoteContent } from '@/components/NoteContent';
+import { MarkdownContent } from '@/components/MarkdownContent';
 import { CommentsSection } from '@/components/comments/CommentsSection';
 import { ZapButton } from '@/components/ZapButton';
 import { createStoryShareLinks } from '@/lib/nostrLinks';
@@ -252,8 +252,8 @@ const StoryPage = () => {
 
         {/* Story content */}
         <Card>
-          <CardContent className="prose prose-neutral dark:prose-invert max-w-none p-8">
-            <NoteContent event={story} className="text-base leading-relaxed" />
+          <CardContent className="p-8">
+            <MarkdownContent content={story.content} className="text-base leading-relaxed" />
           </CardContent>
         </Card>
 

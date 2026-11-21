@@ -78,21 +78,45 @@ function isRumor(value: unknown): value is Rumor {
     && r.tags.every(tag => Array.isArray(tag) && tag.every(part => typeof part === 'string'));
 }
 
+/** Thrown when the signer could not decrypt (declined, disconnected): worth retrying later. */
+export class SignerUnavailableError extends Error {}
+
+class InvalidPayloadError extends Error {}
+
 /**
  * Open a gift wrap addressed to the signer. Returns null for anything that is not a valid
  * kind 14 message: bad signatures, a rumor whose author differs from the seal's signer
- * (impersonation), or content that fails to decrypt.
+ * (impersonation), or malformed content. Throws SignerUnavailableError when the signer
+ * itself failed, so callers can retry instead of treating the message as invalid.
  */
 export async function unwrapDirectMessage(signer: Nip44Signer, wrap: NostrEvent): Promise<Rumor | null> {
+  const decrypt = async (pubkey: string, payload: string) => {
+    try {
+      return await signer.nip44.decrypt(pubkey, payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // A malformed payload will never decrypt: treat it as invalid, not as a signer outage
+      if (/invalid|mac|padding|version|length|base64|decode/i.test(message)) throw new InvalidPayloadError(message);
+      throw new SignerUnavailableError(message || 'Signer could not decrypt');
+    }
+  };
+  let seal: NostrEvent;
   try {
-    const seal = JSON.parse(await signer.nip44.decrypt(wrap.pubkey, wrap.content)) as NostrEvent;
-    if (seal.kind !== 13 || !verifyEvent(seal)) return null;
-    const rumor: unknown = JSON.parse(await signer.nip44.decrypt(seal.pubkey, seal.content));
-    if (!isRumor(rumor) || rumor.kind !== 14 || rumor.pubkey !== seal.pubkey) return null;
-    return rumor;
-  } catch {
+    seal = JSON.parse(await decrypt(wrap.pubkey, wrap.content)) as NostrEvent;
+  } catch (error) {
+    if (error instanceof SignerUnavailableError) throw error;
     return null;
   }
+  if (!seal || seal.kind !== 13 || !verifyEvent(seal)) return null;
+  let rumor: unknown;
+  try {
+    rumor = JSON.parse(await decrypt(seal.pubkey, seal.content));
+  } catch (error) {
+    if (error instanceof SignerUnavailableError) throw error;
+    return null;
+  }
+  if (!isRumor(rumor) || rumor.kind !== 14 || rumor.pubkey !== seal.pubkey) return null;
+  return rumor;
 }
 
 /** NIP-17 inbox relays (kind 10050 `relay` tags) per pubkey. */

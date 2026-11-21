@@ -2,7 +2,7 @@ import type { NostrEvent } from '@nostrify/nostrify';
 import { useNostr } from '@nostrify/react';
 import { useQuery } from '@tanstack/react-query';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { inboxRelaysFrom, supportsNip17, unwrapDirectMessage, type Rumor } from '@/lib/nip17';
+import { inboxRelaysFrom, SignerUnavailableError, supportsNip17, unwrapDirectMessage, type Rumor } from '@/lib/nip17';
 import { readRelayUrls } from '@/lib/RelayPool';
 import { useAppContext } from '@/hooks/useAppContext';
 
@@ -22,6 +22,13 @@ export interface DecryptedMessage {
 const plaintextCache = new Map<string, string>();
 /** Opened NIP-17 gift wraps keyed by `${viewer}:${wrapId}` (null = not a valid message). */
 const rumorCache = new Map<string, Rumor | null>();
+/** Wraps the signer failed to open (declined, disconnected), with when to try again. */
+const retryAfter = new Map<string, number>();
+const SIGNER_RETRY_MS = 5 * 60 * 1000;
+/** NIP-59 backdates wrap timestamps by up to two days; read this window in full. */
+const RANDOMIZED_WINDOW_S = 3 * 24 * 60 * 60;
+const PAGE_SIZE = 300;
+const MAX_PAGES = 5;
 
 /**
  * All NIP-17 messages addressed to the current user (including copies of their own sent
@@ -47,13 +54,33 @@ export function useGiftWrappedInbox() {
         ...(inboxRelaysFrom(lists).get(user.pubkey) ?? []),
         ...readRelayUrls(config.relayUrl, presetRelays),
       ])];
-      const wraps = await nostr.query([{ kinds: [1059], '#p': [user.pubkey], limit: 300 }], { signal, relays });
+      // Wrap timestamps are randomized up to two days into the past, so "newest N" is not
+      // "newest messages": page through the whole recent window, then one page of history.
+      const since = Math.floor(Date.now() / 1000) - RANDOMIZED_WINDOW_S;
+      const wraps: NostrEvent[] = [];
+      let until: number | undefined;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const batch = await nostr.query([{ kinds: [1059], '#p': [user.pubkey], since, limit: PAGE_SIZE, ...(until ? { until } : {}) }], { signal, relays });
+        wraps.push(...batch);
+        if (batch.length < PAGE_SIZE) break;
+        until = Math.min(...batch.map(wrap => wrap.created_at)) - 1;
+      }
+      wraps.push(...await nostr.query([{ kinds: [1059], '#p': [user.pubkey], until: since - 1, limit: PAGE_SIZE }], { signal, relays }));
+
       const rumors = await Promise.all(wraps.map(async (wrap) => {
         const key = `${user.pubkey}:${wrap.id}`;
         if (rumorCache.has(key)) return rumorCache.get(key) ?? null;
-        const rumor = await unwrapDirectMessage(signer, wrap);
-        rumorCache.set(key, rumor);
-        return rumor;
+        if ((retryAfter.get(key) ?? 0) > Date.now()) return null;
+        try {
+          const rumor = await unwrapDirectMessage(signer, wrap);
+          rumorCache.set(key, rumor);
+          retryAfter.delete(key);
+          return rumor;
+        } catch (error) {
+          // The signer failed (declined, disconnected): try this wrap again later
+          if (error instanceof SignerUnavailableError) retryAfter.set(key, Date.now() + SIGNER_RETRY_MS);
+          return null;
+        }
       }));
       // The same rumor can arrive in several wraps (e.g. re-sent); keep one.
       return [...new Map(rumors.filter((r): r is Rumor => !!r).map(r => [r.id, r])).values()];

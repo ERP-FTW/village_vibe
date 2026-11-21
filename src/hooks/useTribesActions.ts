@@ -2,7 +2,9 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNostrPublish } from "@/hooks/useNostrPublish";
 import { useToast } from "@/hooks/useToast";
 import { useNostr } from '@nostrify/react';
+import { useMutation } from '@tanstack/react-query';
 import type { NostrEvent } from "@nostrify/nostrify";
+import { TRIBE_KIND, tribeDTag, tribeModerators } from '@/lib/tribes';
 
 export function useJoinTribe() {
   const { user } = useCurrentUser();
@@ -46,17 +48,14 @@ export function useJoinTribe() {
         return;
       }
 
-      // Check if user has been rejected
-      const rejections = await nostr.query([
-        {
-          kinds: [9022], // Join rejection
-          '#h': [tribeId],
-          '#p': [user.pubkey],
-          limit: 5,
-        }
+      // One request for prior rejections (only from this tribe's moderators count) and pending requests
+      const moderators = new Set(tribeModerators(tribe));
+      const prior = await nostr.query([
+        { kinds: [9022], '#h': [tribeId], '#p': [user.pubkey], limit: 20 },
+        { kinds: [9021], '#h': [tribeId], authors: [user.pubkey], limit: 5 },
       ]);
 
-      if (rejections.length > 0) {
+      if (prior.some(event => event.kind === 9022 && moderators.has(event.pubkey))) {
         toast({
           title: "Request Previously Rejected",
           description: "Your join request was rejected by the tribe admins",
@@ -65,33 +64,13 @@ export function useJoinTribe() {
         return;
       }
 
-      // Check for existing pending requests
-      const existingRequests = await nostr.query([
-        {
-          kinds: [9021], // Join request
-          '#h': [tribeId],
-          authors: [user.pubkey],
-          limit: 5,
-        }
-      ]);
-
-      if (existingRequests.length > 0) {
+      if (prior.some(event => event.kind === 9021)) {
         toast({
           title: "Request Already Pending",
           description: "You already have a pending join request for this tribe",
           variant: "destructive",
         });
         return;
-      }
-
-      // Check if tribe is open or closed
-      const isOpen = tribe.tags.some(([name]) => name === 'open');
-
-      if (!isOpen) {
-        toast({
-          title: "Tribe is Closed",
-          description: "This tribe requires approval to join. Your request will be reviewed by admins.",
-        });
       }
 
       // Send a join request event using NIP-29 format
@@ -106,8 +85,8 @@ export function useJoinTribe() {
       });
 
       toast({
-        title: "🎉 Join Request Sent!",
-        description: `Your request to join ${tribeName} has been submitted.`,
+        title: "Join request sent",
+        description: `The admins of ${tribeName} will review your request.`,
       });
 
     } catch (error) {
@@ -121,4 +100,39 @@ export function useJoinTribe() {
   };
 
   return { joinTribe, isPending };
+}
+/**
+ * Change a tribe definition (kind 34550) safely:
+ * - only the creator's key can replace it, so anyone else is refused instead of
+ *   silently publishing a fork under their own key;
+ * - the newest version is fetched first, so concurrent edits (e.g. approving two
+ *   requests in a row) build on each other instead of overwriting each other.
+ */
+export function useUpdateTribe() {
+  const { user } = useCurrentUser();
+  const { nostr } = useNostr();
+  const { mutateAsync: publish } = useNostrPublish();
+
+  return useMutation({
+    mutationFn: async ({ tribe, update }: {
+      tribe: NostrEvent;
+      update: (latest: NostrEvent) => { tags: string[][]; content?: string };
+    }) => {
+      if (!user || user.pubkey !== tribe.pubkey) {
+        throw new Error('Only the tribe creator can change the tribe definition.');
+      }
+      const [latest] = await nostr.query([{
+        kinds: [TRIBE_KIND], authors: [tribe.pubkey], '#d': [tribeDTag(tribe)], limit: 1,
+      }]);
+      const base = latest && latest.created_at >= tribe.created_at ? latest : tribe;
+      const next = update(base);
+      return publish({
+        kind: TRIBE_KIND,
+        content: next.content ?? base.content,
+        tags: next.tags,
+        // A replacement must be newer than the version it replaces.
+        created_at: Math.max(Math.floor(Date.now() / 1000), base.created_at + 1),
+      });
+    },
+  });
 }

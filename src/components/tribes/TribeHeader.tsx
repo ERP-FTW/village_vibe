@@ -1,4 +1,5 @@
 import type { NostrEvent } from "@nostrify/nostrify";
+import { isTribeCreator } from "@/lib/tribes";
 import { useAuthor } from "@/hooks/useAuthor";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useJoinTribe } from "@/hooks/useTribesActions";
@@ -40,7 +41,7 @@ export function TribeHeader({ tribe }: TribeHeaderProps) {
   // Check if user is already a member
   const isMember = user && members.some(([, pubkey]) => pubkey === user.pubkey);
   const isCreator = user?.pubkey === tribe.pubkey;
-  const isAdmin = user && members.some(([, pubkey, , role]) => pubkey === user.pubkey && role === 'admin');
+  const isAdmin = isTribeCreator(tribe, user?.pubkey);
 
   return (
     <Card>

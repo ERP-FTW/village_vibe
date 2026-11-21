@@ -4,6 +4,8 @@ import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
 import { useVillagePreferences } from './useVillagePreferences';
+import { tribeQueryOptions } from './useTribes';
+import { MAX_FEED_AUTHORS, tribeMemberAuthors } from '@/lib/tribes';
 
 // Story filter options
 export interface StoryFilters {
@@ -24,6 +26,7 @@ function searchStories(events: NostrEvent[], search?: string) {
 // Hook to get stories for a specific tribe
 export function useTribeStories(tribeId: string, filters: StoryFilters = {}) {
   const { nostr } = useNostr();
+  const queryClient = useQueryClient();
 
   const { search, ...queryFilters } = filters;
   return useQuery({
@@ -36,35 +39,12 @@ export function useTribeStories(tribeId: string, filters: StoryFilters = {}) {
       const [pubkey, dTag] = tribeId.split(':');
       if (!pubkey || !dTag) return [];
 
-      console.log('🔍 Querying stories for tribe:', { tribeId, dTag });
-
-      // Use the same approach as services - query by author first
-      const authorEvents = await nostr.query([{
-        kinds: [30023], // Long-form content (NIP-23)
-        authors: [pubkey],
-        limit: 100,
-      }], { signal });
-
-      console.log('📦 Found stories by author:', authorEvents.length);
-
-      // Filter by tribe tag client-side, but fallback to showing all author's stories
-      let tribeEvents = authorEvents.filter(event => {
-        const tribeTags = event.tags.filter(([name]) => name === 'tribe');
-        const matchesTribe = tribeTags.some(([, value]) => value === dTag);
-        return matchesTribe;
-      });
-
-      console.log('📚 Stories matching exact tribe:', tribeEvents.length);
-
-      // If no stories match the exact tribe, show all stories from this author
-      if (tribeEvents.length === 0) {
-        tribeEvents = authorEvents;
-        console.log('📋 Falling back to all author stories:', tribeEvents.length);
-      }
-
-      // Apply additional filters
-      const filteredEvents = tribeEvents;
-
+      // Any member can publish stories in their tribe.
+      const tribe = await queryClient.ensureQueryData(tribeQueryOptions(nostr, tribeId));
+      const authors = tribe ? tribeMemberAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
+      const records = await nostr.query([{ kinds: [30023], authors, limit: 200 }], { signal });
+      const filteredEvents = records.filter(event =>
+        event.tags.some(([name, value]) => name === 'tribe' && value === dTag));
 
       const validEvents = filteredEvents.filter(validateStoryEvent);
       console.log('✅ Valid stories:', validEvents.length);

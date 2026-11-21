@@ -1,6 +1,7 @@
 import { useNostr } from '@nostrify/react';
-import { useQuery } from '@tanstack/react-query';
-import type { NostrEvent } from '@nostrify/nostrify';
+import { queryOptions, useQuery } from '@tanstack/react-query';
+import type { NostrEvent, NStore } from '@nostrify/nostrify';
+import { tribeIdOf, tribeModerators } from '@/lib/tribes';
 
 export type TribeRequestStatus = 'none' | 'pending' | 'rejected';
 
@@ -52,21 +53,20 @@ export function usePublicTribes() {
         }
       ], { signal });
 
-      return events;
+      // Private tribes are only discoverable by their members.
+      return events.filter(event => validateTribeEvent(event) && !event.tags.some(([name]) => name === 'private'));
     },
   });
 }
 
-// Hook to get a specific tribe by its coordinates
-export function useTribe(tribeId: string) {
-  const { nostr } = useNostr();
-
-  return useQuery({
+/** Shared query definition so feeds can reuse the cached tribe definition. */
+export function tribeQueryOptions(nostr: NStore, tribeId: string) {
+  return queryOptions({
     queryKey: ['tribe', tribeId],
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal }): Promise<NostrEvent | null> => {
       const [pubkey, ...parts] = tribeId.split(':');
       const identifier = parts.join(':');
-      if (!pubkey || !identifier) return null;
+      if (!/^[0-9a-f]{64}$/.test(pubkey) || !identifier) return null;
       const [tribe] = await nostr.query([{
         kinds: [34550], authors: [pubkey], '#d': [identifier], limit: 1,
       }], { signal });
@@ -75,104 +75,10 @@ export function useTribe(tribeId: string) {
   });
 }
 
-// Hook to get join requests for a tribe (for checking if user already requested)
-export function useTribeJoinRequests(tribeId: string, userPubkey?: string) {
+// Hook to get a specific tribe by its coordinates
+export function useTribe(tribeId: string) {
   const { nostr } = useNostr();
-
-  return useQuery({
-    queryKey: ['tribe-join-requests', tribeId, userPubkey],
-    queryFn: async (c) => {
-      const { signal } = c;
-
-      const filter: {
-        kinds: number[];
-        '#h': string[];
-        limit: number;
-        authors?: string[];
-      } = {
-        kinds: [9021], // Join request (NIP-29)
-        '#h': [tribeId],
-        limit: 100,
-      };
-
-      // If checking for specific user, filter by author
-      if (userPubkey) {
-        filter.authors = [userPubkey];
-      }
-
-      // Get join requests and rejections
-      const [requests, rejections] = await Promise.all([
-        nostr.query([filter], { signal }),
-        nostr.query([
-          {
-            kinds: [9022], // Join rejection (custom kind)
-            '#h': [tribeId],
-            authors: userPubkey ? [userPubkey] : undefined,
-            '#p': userPubkey ? [userPubkey] : undefined,
-            limit: 10,
-          }
-        ], { signal })
-      ]);
-
-      // If user has been rejected, don't show any pending requests
-      if (userPubkey && rejections.length > 0) {
-        return [];
-      }
-
-      return requests.sort((a, b) => b.created_at - a.created_at);
-    },
-    enabled: !!tribeId,
-  });
-}
-
-// Hook to get member count for a tribe by fetching fresh data
-export function useTribeMemberCount(tribeId: string) {
-  const { nostr } = useNostr();
-
-  return useQuery({
-    queryKey: ['tribe-member-count', tribeId],
-    queryFn: async (c) => {
-      if (!tribeId) return 0;
-
-      const { signal } = c;
-
-      // Parse tribe coordinates (format: pubkey:d-identifier)
-      const [pubkey, dTag] = tribeId.split(':');
-      if (!pubkey || !dTag) {
-        return 0;
-      }
-
-      const events = await nostr.query([
-        {
-          kinds: [34550],
-          authors: [pubkey],
-          '#d': [dTag],
-          limit: 1,
-        }
-      ], { signal });
-
-      const tribe = events[0];
-      if (!tribe) return 0;
-
-      return getUniqueMemberCount(tribe);
-    },
-    enabled: !!tribeId,
-    staleTime: 30000, // Cache for 30 seconds
-  });
-}
-
-// Helper function to count unique members from p tags
-function getUniqueMemberCount(tribe: NostrEvent): number {
-  const memberPubkeys = new Set();
-
-  // Count unique pubkeys from p tags (members, moderators, admins, etc.)
-  tribe.tags.forEach(([name, pubkey]) => {
-    if (name === 'p' && pubkey) {
-      memberPubkeys.add(pubkey);
-    }
-  });
-
-  return memberPubkeys.size;
+  return useQuery({ ...tribeQueryOptions(nostr, tribeId), enabled: tribeId.includes(':') });
 }
 
 // Hook to get tribe name from tribe tag value
@@ -213,29 +119,25 @@ export function useTribeName(tribeTag?: string) {
   });
 }
 
-// Helper function to extract tribe name from event
-export function extractTribeName(event: NostrEvent): string {
-  const tribeTag = event.tags.find(([name]) => name === 'tribe')?.[1];
-  return tribeTag || 'Unknown Tribe';
-}
-
 /**
  * Batch-query join-request and rejection status for multiple tribe IDs.
  * Returns a Map<tribeId, TribeRequestStatus> so each TribeCard can read
  * its status without firing any individual queries of its own.
  */
-export function useTribesCardStatuses(tribeIds: string[], userPubkey?: string) {
+export function useTribesCardStatuses(tribes: NostrEvent[], userPubkey?: string) {
   const { nostr } = useNostr();
+  const tribeIds = [...new Set(tribes.map(tribeIdOf))].sort();
 
   return useQuery({
-    queryKey: ['tribes-card-statuses', tribeIds.slice().sort().join(','), userPubkey],
+    queryKey: ['tribes-card-statuses', tribeIds.join(','), userPubkey],
     queryFn: async (c) => {
       const result = new Map<string, TribeRequestStatus>();
       tribeIds.forEach(id => result.set(id, 'none'));
 
       if (!userPubkey || tribeIds.length === 0) return result;
 
-      const { signal } = c;
+      // Only the tribe's own moderators can reject a request.
+      const moderators = new Map(tribes.map(tribe => [tribeIdOf(tribe), new Set(tribeModerators(tribe))]));
 
       // One request for both join requests (9021) and rejections (9022)
       const events = await nostr.query(
@@ -253,20 +155,17 @@ export function useTribesCardStatuses(tribeIds: string[], userPubkey?: string) {
             limit: 200,
           },
         ],
-        { signal },
+        { signal: c.signal },
       );
 
-      const requests = events.filter(e => e.kind === 9021);
-      const rejections = events.filter(e => e.kind === 9022);
-
       // Mark rejections first (highest priority)
-      rejections.forEach(e => {
+      events.filter(e => e.kind === 9022).forEach(e => {
         const h = e.tags.find(([n]) => n === 'h')?.[1];
-        if (h && result.has(h)) result.set(h, 'rejected');
+        if (h && result.has(h) && moderators.get(h)?.has(e.pubkey)) result.set(h, 'rejected');
       });
 
       // Mark pending only if not already rejected
-      requests.forEach(e => {
+      events.filter(e => e.kind === 9021).forEach(e => {
         const h = e.tags.find(([n]) => n === 'h')?.[1];
         if (h && result.get(h) === 'none') result.set(h, 'pending');
       });

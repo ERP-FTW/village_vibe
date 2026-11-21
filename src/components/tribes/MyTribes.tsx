@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useMyTribes, usePublicTribes, useTribesCardStatuses } from "@/hooks/useTribes";
+import { tribeIdOf } from "@/lib/tribes";
 import { CreateTribeDialog } from "./CreateTribeDialog";
 import { TribeCard } from "./TribeCard";
 import { Button } from "@/components/ui/button";
@@ -14,22 +15,15 @@ export function MyTribes() {
   const { data: myTribes, isLoading: myTribesLoading } = useMyTribes(user?.pubkey);
   const { data: publicTribes, isLoading: publicTribesLoading } = usePublicTribes();
 
-  // Collect all visible tribe IDs to batch the status query
-  const allTribeIds = useMemo(() => {
-    const ids = new Set<string>();
-    myTribes?.forEach(t => {
-      const d = t.tags.find(([n]) => n === 'd')?.[1];
-      if (d) ids.add(`${t.pubkey}:${d}`);
-    });
-    publicTribes?.forEach(t => {
-      const d = t.tags.find(([n]) => n === 'd')?.[1];
-      if (d) ids.add(`${t.pubkey}:${d}`);
-    });
-    return Array.from(ids);
-  }, [myTribes, publicTribes]);
+  // Hide tribes from Discover that the user already belongs to
+  const myTribeIds = useMemo(() => new Set((myTribes ?? []).map(tribeIdOf)), [myTribes]);
+  const discoverTribes = useMemo(
+    () => (publicTribes ?? []).filter(tribe => !myTribeIds.has(tribeIdOf(tribe))),
+    [publicTribes, myTribeIds],
+  );
 
-  // One batched query covers all visible cards
-  const { data: cardStatuses } = useTribesCardStatuses(allTribeIds, user?.pubkey);
+  // One batched query covers the join status of every visible card
+  const { data: cardStatuses } = useTribesCardStatuses(discoverTribes, user?.pubkey);
 
   // Only show loading and content if user is logged in
   if (!user) {
@@ -73,7 +67,7 @@ export function MyTribes() {
   }
 
   const hasMyTribes = myTribes && myTribes.length > 0;
-  const hasPublicTribes = publicTribes && publicTribes.length > 0;
+  const hasPublicTribes = discoverTribes.length > 0;
 
   return (
     <div className="space-y-8">
@@ -96,17 +90,9 @@ export function MyTribes() {
 
         {hasMyTribes ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {myTribes.map((tribe) => {
-              const d = tribe.tags.find(([n]) => n === 'd')?.[1] || '';
-              const tribeId = `${tribe.pubkey}:${d}`;
-              return (
-                <TribeCard
-                  key={tribe.id}
-                  tribe={tribe}
-                  requestStatus={cardStatuses?.get(tribeId) ?? 'none'}
-                />
-              );
-            })}
+            {myTribes.map((tribe) => (
+              <TribeCard key={tribe.id} tribe={tribe} requestStatus="none" />
+            ))}
           </div>
         ) : (
           <Card className="border-dashed">
@@ -143,24 +129,20 @@ export function MyTribes() {
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
-              {publicTribes?.length || 0} tribes
+              {discoverTribes.length} tribes
             </span>
           </div>
         </div>
 
         {hasPublicTribes ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {publicTribes.map((tribe) => {
-              const d = tribe.tags.find(([n]) => n === 'd')?.[1] || '';
-              const tribeId = `${tribe.pubkey}:${d}`;
-              return (
-                <TribeCard
-                  key={tribe.id}
-                  tribe={tribe}
-                  requestStatus={cardStatuses?.get(tribeId) ?? 'none'}
-                />
-              );
-            })}
+            {discoverTribes.map((tribe) => (
+              <TribeCard
+                key={tribe.id}
+                tribe={tribe}
+                requestStatus={cardStatuses?.get(tribeIdOf(tribe)) ?? 'none'}
+              />
+            ))}
           </div>
         ) : (
           <Card className="border-dashed">

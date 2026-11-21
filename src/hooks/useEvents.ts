@@ -9,7 +9,7 @@ import { useVillagePreferences } from './useVillagePreferences';
 import { useCurrentUser } from './useCurrentUser';
 import { useTribe } from './useTribes';
 import { MAX_FEED_AUTHORS, tribeEventAuthors, tribeModerators } from '@/lib/tribes';
-import { tribeHiddenLabelsFilter, withoutHidden } from '@/lib/moderation';
+import { dropHidden } from '@/lib/moderation';
 
 // Event types for multi-type support (whitelisted values)
 export const EVENT_TYPES = [
@@ -78,14 +78,13 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
 
       const allowed = new Set(tribe ? tribeEventAuthors(tribe) : [pubkey]);
       const moderators = tribe ? tribeModerators(tribe) : [pubkey];
-      const records = withoutHidden(await nostr.query([
+      const records = await dropHidden(nostr, await nostr.query([
         // Indexed: events tagged with the tribe coordinate (any size of tribe)
         { kinds: [36959, 31923], '#a': [tribeCoordinate(tribeId)], limit: (filters.limit || 100) + 100 },
         // Legacy: events from before the indexed tag, found through their authors
         { kinds: [36959], authors, limit: filters.limit || 100 },
         { kinds: [31923], authors, limit: 100 },
-        tribeHiddenLabelsFilter(moderators),
-      ], { signal }), moderators);
+      ], { signal }), moderators, signal);
       let validEvents = records.filter(event =>
         allowed.has(event.pubkey) && belongsToTribe(event.tags, tribeId)
         && (event.kind === 36959 ? validateEnhancedEvent(event) : validateCalendarEvent(event)));

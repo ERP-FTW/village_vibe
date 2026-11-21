@@ -8,7 +8,7 @@ import type { NostrEvent } from '@nostrify/nostrify';
 import { useVillagePreferences } from './useVillagePreferences';
 import { useTribe } from './useTribes';
 import { MAX_FEED_AUTHORS, tribeMemberAuthors, tribeModerators } from '@/lib/tribes';
-import { tribeHiddenLabelsFilter, withoutHidden } from '@/lib/moderation';
+import { dropHidden } from '@/lib/moderation';
 
 // Service categories
 export const SERVICE_CATEGORIES = [
@@ -66,13 +66,12 @@ export function useTribeServices(tribeId: string, filters: ServiceFilters = {}) 
       const authors = tribe ? tribeMemberAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
       const moderators = tribe ? tribeModerators(tribe) : [pubkey];
       const allowed = new Set(tribe ? tribeMemberAuthors(tribe) : [pubkey]);
-      const records = withoutHidden(await nostr.query([
+      const records = await dropHidden(nostr, await nostr.query([
         // Indexed: services tagged with the tribe coordinate
         { kinds, '#a': [tribeCoordinate(tribeId)], limit: 200 },
         // Legacy: services from before the indexed tag, found through their authors
         { kinds, authors, limit: 200 },
-        tribeHiddenLabelsFilter(moderators),
-      ], { signal }), moderators);
+      ], { signal }), moderators, signal);
       const tribeEvents = records.filter(event =>
         allowed.has(event.pubkey) && belongsToTribe(event.tags, tribeId));
 

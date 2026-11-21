@@ -1,10 +1,13 @@
 import { useAuthor } from "@/hooks/useAuthor";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useMyTribes } from "@/hooks/useTribes";
-import { useUserBadgeAwards, useUserProfileBadges, useBadgeData } from "@/hooks/useBadges";
+import { useUserBadgeAwards, useBadgeData } from "@/hooks/useBadges";
 import { useProfilePrivacy } from "@/hooks/useProfilePrivacy";
 import { DMDialog } from "@/components/DMDialog";
-import { ProfileZapDialog } from "@/components/ProfileZapDialog";
+import { ZapDialog } from "@/components/ZapDialog";
+import { Link } from "react-router-dom";
+import { safeHttpUrl } from "@/lib/utils";
+import { tribeIdOf, tribeMembers } from "@/lib/tribes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -21,12 +24,16 @@ export function ProfileView({ pubkey }: ProfileViewProps) {
   const { user } = useCurrentUser();
   const author = useAuthor(pubkey);
   const { data: badgeAwards, isLoading: badgeAwardsLoading } = useUserBadgeAwards(pubkey);
-  const { data: _profileBadges } = useUserProfileBadges(pubkey);
   const { data: badgeData } = useBadgeData(badgeAwards || []);
-  const { data: userTribes } = useMyTribes(pubkey);
-  const { data: privacySettings } = useProfilePrivacy(pubkey);
+  const { data: memberTribes } = useMyTribes(pubkey);
+  const { data: privacySettings, isLoading: privacyLoading } = useProfilePrivacy(pubkey);
 
   const metadata = author.data?.metadata;
+  // Only http(s) links: profile metadata is untrusted and could carry javascript: URLs.
+  const websiteUrl = safeHttpUrl(metadata?.website);
+  // Private tribes are only listed for their own members.
+  const userTribes = memberTribes?.filter(tribe =>
+    !tribe.tags.some(([name]) => name === 'private') || (!!user && tribeMembers(tribe).has(user.pubkey)));
   const displayName = metadata?.name || metadata?.display_name || genUserName(pubkey);
   const isOwnProfile = user?.pubkey === pubkey;
 
@@ -35,7 +42,7 @@ export function ProfileView({ pubkey }: ProfileViewProps) {
   const showTribes = isOwnProfile || privacySettings?.showTribes;
   const showBasicInfo = isOwnProfile || privacySettings?.showBasicInfo;
 
-  if (author.isLoading) {
+  if (author.isLoading || privacyLoading) {
     return (
       <div className="max-w-4xl mx-auto space-y-8">
         <Card>
@@ -95,11 +102,11 @@ export function ProfileView({ pubkey }: ProfileViewProps) {
                     <span>{pubkey.slice(0, 8)}...{pubkey.slice(-8)}</span>
                   </div>
 
-                  {metadata?.website && (
+                  {websiteUrl && (
                     <div className="flex items-center gap-2">
                       <MapPin className="h-4 w-4" />
                       <a
-                        href={metadata.website}
+                        href={websiteUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="hover:text-foreground underline"
@@ -124,26 +131,24 @@ export function ProfileView({ pubkey }: ProfileViewProps) {
                     </Button>
                   </DMDialog>
 
-                  <ProfileZapDialog
-                    recipientPubkey={pubkey}
-                    recipientName={displayName}
-                    recipientLud16={metadata?.lud16}
-                  >
-                    <Button size="sm" variant="outline">
-                      <Zap className="h-4 w-4 mr-2" />
-                      Zap
-                    </Button>
-                  </ProfileZapDialog>
+                  {author.data?.event && (metadata?.lud16 || metadata?.lud06) && (
+                    <ZapDialog target={author.data.event}>
+                      <Button size="sm" variant="outline">
+                        <Zap className="h-4 w-4 mr-2" />
+                        Zap
+                      </Button>
+                    </ZapDialog>
+                  )}
                 </div>
               )}
 
               {isOwnProfile && (
                 <div className="flex gap-3 justify-center md:justify-start pt-4">
                   <Button asChild size="sm" variant="outline">
-                    <a href="/settings/profile">
+                    <Link to="/settings/profile">
                       <Settings className="h-4 w-4 mr-2" />
                       Edit Profile
-                    </a>
+                    </Link>
                   </Button>
                 </div>
               )}
@@ -233,7 +238,7 @@ export function ProfileView({ pubkey }: ProfileViewProps) {
                 const nameTag = tribe.tags.find(([name]) => name === 'name')?.[1];
                 const imageTag = tribe.tags.find(([name]) => name === 'image')?.[1];
                 const tribeName = nameTag || dTag;
-                const tribeId = `${tribe.pubkey}:${dTag}`;
+                const tribeId = tribeIdOf(tribe);
 
                 // Get user's role in this tribe
                 const userRole = tribe.tags.find(([name, memberPubkey, , _role]) =>
@@ -259,9 +264,9 @@ export function ProfileView({ pubkey }: ProfileViewProps) {
                           )}
                         </div>
                         <Button asChild size="sm" variant="ghost">
-                          <a href={`/tribe/${tribeId}`}>
+                          <Link to={`/tribe/${tribeId}`}>
                             View
-                          </a>
+                          </Link>
                         </Button>
                       </div>
                     </CardContent>

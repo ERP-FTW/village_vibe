@@ -94,7 +94,7 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
               <h3 className="text-lg font-semibold">{otherUserName}</h3>
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Lock className="h-3 w-3" />
-                <span>End-to-end encrypted</span>
+                <span title="Message text is encrypted (NIP-04). Who you message and when is visible on relays.">Encrypted message text</span>
               </div>
             </div>
           </CardTitle>

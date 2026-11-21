@@ -1,3 +1,4 @@
+import type { NostrEvent } from '@nostrify/nostrify';
 import { useNostr } from '@nostrify/react';
 import { useQuery } from '@tanstack/react-query';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -11,6 +12,9 @@ export interface DecryptedMessage {
   isFromMe: boolean;
   decryptError?: boolean;
 }
+
+/** Decrypted DM content keyed by `${viewer}:${eventId}`; lives for the page session only. */
+const plaintextCache = new Map<string, string>();
 
 export function useDirectMessages(otherUserPubkey?: string) {
   const { nostr } = useNostr();
@@ -33,63 +37,41 @@ export function useDirectMessages(otherUserPubkey?: string) {
         }
       ], { signal });
 
-      // Filter messages between these specific users
+      // Messages between exactly these two users (incoming: we appear in any p tag)
       const relevantMessages = events.filter(event => {
-        const recipientTag = event.tags.find(([name]) => name === 'p')?.[1];
-        return (
-          (event.pubkey === user.pubkey && recipientTag === otherUserPubkey) ||
-          (event.pubkey === otherUserPubkey && recipientTag === user.pubkey)
-        );
+        if (event.pubkey === user.pubkey) {
+          return event.tags.find(([name]) => name === 'p')?.[1] === otherUserPubkey;
+        }
+        return event.pubkey === otherUserPubkey && event.tags.some(([name, value]) => name === 'p' && value === user.pubkey);
       });
 
-      // Decrypt messages
-      const decryptedMessages: DecryptedMessage[] = [];
-
-      for (const event of relevantMessages) {
-        try {
-          let decryptedContent: string;
-
-          if (event.pubkey === user.pubkey) {
-            // Message sent by current user
-            if (user.signer.nip04) {
-              decryptedContent = await user.signer.nip04.decrypt(otherUserPubkey, event.content);
-            } else {
-              decryptedContent = '[Decryption not supported]';
-            }
-          } else {
-            // Message received from other user
-            if (user.signer.nip04) {
-              decryptedContent = await user.signer.nip04.decrypt(event.pubkey, event.content);
-            } else {
-              decryptedContent = '[Decryption not supported]';
-            }
-          }
-
-          const recipientTag = event.tags.find(([name]) => name === 'p')?.[1];
-
-          decryptedMessages.push({
-            id: event.id,
-            content: decryptedContent,
-            created_at: event.created_at,
-            sender: event.pubkey,
-            recipient: recipientTag || '',
-            isFromMe: event.pubkey === user.pubkey,
-          });
-        } catch (error) {
-          console.error('Failed to decrypt message:', error);
-          const recipientTag = event.tags.find(([name]) => name === 'p')?.[1];
-
-          decryptedMessages.push({
-            id: event.id,
-            content: '[Failed to decrypt message]',
-            created_at: event.created_at,
-            sender: event.pubkey,
-            recipient: recipientTag || '',
-            isFromMe: event.pubkey === user.pubkey,
-            decryptError: true,
-          });
+      const nip04 = user.signer.nip04;
+      const decryptedMessages = await Promise.all(relevantMessages.map(async (event): Promise<DecryptedMessage> => {
+        const message = {
+          id: event.id,
+          created_at: event.created_at,
+          sender: event.pubkey,
+          recipient: event.tags.find(([name]) => name === 'p')?.[1] || '',
+          isFromMe: event.pubkey === user.pubkey,
+        };
+        if (!nip04) {
+          return { ...message, content: '[Decryption not supported by your signer]', decryptError: true };
         }
-      }
+        // Polling re-reads the same events; decrypt each one only once per session
+        // (each decrypt can be a signer prompt or a remote bunker round-trip).
+        const cacheKey = `${user.pubkey}:${event.id}`;
+        let plaintext = plaintextCache.get(cacheKey);
+        if (plaintext === undefined) {
+          try {
+            plaintext = await nip04.decrypt(otherUserPubkey, event.content);
+            plaintextCache.set(cacheKey, plaintext);
+          } catch (error) {
+            console.error('Failed to decrypt message:', error);
+            return { ...message, content: '[Failed to decrypt message]', decryptError: true };
+          }
+        }
+        return { ...message, content: plaintext };
+      }));
 
       // Sort by timestamp (oldest first for chat display)
       return decryptedMessages.sort((a, b) => a.created_at - b.created_at);
@@ -125,40 +107,23 @@ export function useConversations() {
         }
       ], { signal });
 
-      // Extract unique conversation partners
-      const conversationPartners = new Set<string>();
+      // Latest message per conversation partner. Incoming messages count when we
+      // appear in any p tag; outgoing ones belong to their first recipient.
+      const latest = new Map<string, NostrEvent>();
+      for (const event of events) {
+        const partner = event.pubkey === user.pubkey
+          ? event.tags.find(([name]) => name === 'p')?.[1]
+          : event.tags.some(([name, value]) => name === 'p' && value === user.pubkey) ? event.pubkey : undefined;
+        if (!partner) continue;
+        const current = latest.get(partner);
+        if (!current || event.created_at > current.created_at) latest.set(partner, event);
+      }
 
-      events.forEach(event => {
-        if (event.pubkey === user.pubkey) {
-          // Message sent by current user - get recipient
-          const recipient = event.tags.find(([name]) => name === 'p')?.[1];
-          if (recipient) conversationPartners.add(recipient);
-        } else {
-          // Message received by current user - get sender
-          conversationPartners.add(event.pubkey);
-        }
-      });
-
-      // Get the latest message timestamp for each conversation
-      const conversations = Array.from(conversationPartners).map(pubkey => {
-        const conversationMessages = events.filter(event => {
-          const recipientTag = event.tags.find(([name]) => name === 'p')?.[1];
-          return (
-            (event.pubkey === user.pubkey && recipientTag === pubkey) ||
-            (event.pubkey === pubkey && recipientTag === user.pubkey)
-          );
-        });
-
-        const latestMessage = conversationMessages.reduce((latest, current) =>
-          current.created_at > latest.created_at ? current : latest
-        );
-
-        return {
-          pubkey,
-          lastMessageAt: latestMessage.created_at,
-          lastMessageId: latestMessage.id,
-        };
-      });
+      const conversations = Array.from(latest, ([pubkey, message]) => ({
+        pubkey,
+        lastMessageAt: message.created_at,
+        lastMessageId: message.id,
+      }));
 
       // Sort by most recent message
       return conversations.sort((a, b) => b.lastMessageAt - a.lastMessageAt);

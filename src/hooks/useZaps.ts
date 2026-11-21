@@ -192,35 +192,13 @@ export function useZaps(
         return;
       }
 
-      // Create zap request - use appropriate event format based on kind
-      // For addressable events (30000-39999), pass the object to get 'a' tag
-      // For all other events, pass the ID string to get 'e' tag
-      const event = (actualTarget.kind >= 30000 && actualTarget.kind < 40000)
-        ? actualTarget
-        : actualTarget.id;
-
       const zapAmount = amount * 1000; // convert to millisats
 
-      let zapRequest;
-
-      if (typeof event === 'string') {
-        // Profile zap (no event)
-        zapRequest = nip57.makeZapRequest({
-          pubkey: actualTarget.pubkey,
-          amount: zapAmount,
-          relays: [config.relayUrl],
-          comment
-        });
-      } else {
-        // Event zap
-        zapRequest = nip57.makeZapRequest({
-          pubkey: actualTarget.pubkey,
-          event: event,
-          amount: zapAmount,
-          relays: [config.relayUrl],
-          comment
-        });
-      }
+      // A kind 0 target is a profile zap; anything else zaps that event
+      // (nostr-tools adds the `e` tag, plus `a` for addressable events).
+      const zapRequest = actualTarget.kind === 0
+        ? nip57.makeZapRequest({ pubkey: actualTarget.pubkey, amount: zapAmount, relays: [config.relayUrl], comment })
+        : nip57.makeZapRequest({ event: actualTarget, amount: zapAmount, relays: [config.relayUrl], comment });
 
       // Sign the zap request (but don't publish to relays - only send to LNURL endpoint)
       if (!user.signer) {
@@ -229,7 +207,10 @@ export function useZaps(
       const signedZapRequest = await user.signer.signEvent(zapRequest);
 
       try {
-        const res = await fetch(`${zapEndpoint}?amount=${zapAmount}&nostr=${encodeURI(JSON.stringify(signedZapRequest))}`);
+        const url = new URL(zapEndpoint);
+        url.searchParams.set('amount', String(zapAmount));
+        url.searchParams.set('nostr', JSON.stringify(signedZapRequest));
+        const res = await fetch(url);
             const responseData = await res.json();
 
             if (!res.ok) {

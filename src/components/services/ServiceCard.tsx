@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ProfileZapDialog } from '@/components/ProfileZapDialog';
+import { ZapDialog } from '@/components/ZapDialog';
 import { DMDialog } from '@/components/DMDialog';
 import { ServiceModerationDialog } from './ServiceModerationDialog';
 import { ServicePromotionDialog } from './ServicePromotionDialog';
@@ -195,16 +195,14 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
               </Button>
             </DMDialog>
 
-            <ProfileZapDialog
-              recipientPubkey={event.pubkey}
-              recipientName={displayName}
-              recipientLud16={metadata?.lud16}
-            >
-              <Button size="sm" variant="outline">
-                <Zap className="h-4 w-4 mr-1" />
-                Zap
-              </Button>
-            </ProfileZapDialog>
+            {(metadata?.lud16 || metadata?.lud06) && (
+              <ZapDialog target={event}>
+                <Button size="sm" variant="outline">
+                  <Zap className="h-4 w-4 mr-1" />
+                  Zap
+                </Button>
+              </ZapDialog>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

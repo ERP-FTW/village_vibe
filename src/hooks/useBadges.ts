@@ -43,6 +43,7 @@ export function useUserBadgeAwards(userPubkey: string) {
 
       return events.filter(validateBadgeAward);
     },
+    enabled: !!userPubkey,
   });
 }
 
@@ -170,5 +171,8 @@ export function validateBadgeAward(event: NostrEvent): boolean {
 
   if (!aTag || pTags.length === 0) return false;
 
-  return true;
+  // NIP-58: an award is only valid when issued by the badge definition's author.
+  // Without this check anyone could award themselves any tribe's badge.
+  const [kind, issuer] = aTag.split(':');
+  return kind === '30009' && issuer === event.pubkey;
 }

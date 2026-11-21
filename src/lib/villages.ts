@@ -17,3 +17,12 @@ export function villageDisplayName(slug: string): string {
     .map(word => word[0].toUpperCase() + word.slice(1))
     .join(' ');
 }
+
+/**
+ * Villages to query: a slug, the special "main" page (all villages), or a list.
+ * An empty list means all villages.
+ */
+export function villageList(villages: string | string[]): string[] {
+  const list = Array.isArray(villages) ? villages : villages === 'main' ? [] : [villages];
+  return [...new Set(list.map(slugifyVillage).filter(Boolean))];
+}

@@ -31,7 +31,7 @@ export function NIPPage() {
         <CardContent className="text-center">
           <DownloadNIP />
           <p className="text-sm text-muted-foreground mt-3">
-            Markdown format • ~15KB • Updated September 2025
+            Markdown format • the same NIP.md this site is built from
           </p>
         </CardContent>
       </Card>
@@ -58,8 +58,20 @@ export function NIPPage() {
               <span className="text-sm">Moderation Labels</span>
               <Badge variant="secondary">Kind 1985</Badge>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Service Offers / Requests</span>
+              <Badge variant="secondary">Kinds 38857 / 30627</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Service Responses</span>
+              <Badge variant="secondary">Kind 34871</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Event Coordination</span>
+              <Badge variant="secondary">Kinds 38401–38407</Badge>
+            </div>
             <p className="text-xs text-muted-foreground mt-4">
-              Extends existing NIPs (23, 32, 52) for community-focused features
+              Extends existing NIPs (23, 32, 40, 52, 72) for community-focused features
             </p>
           </CardContent>
         </Card>

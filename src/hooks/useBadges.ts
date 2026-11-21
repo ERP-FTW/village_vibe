@@ -1,6 +1,21 @@
 import { useNostr } from '@nostrify/react';
 import { useQuery } from '@tanstack/react-query';
-import type { NostrEvent } from '@nostrify/nostrify';
+import type { NostrEvent, NStore } from '@nostrify/nostrify';
+import { batcherPerStore, createBatcher } from '@/lib/batcher';
+
+/** Badge award (kind 8) lookups for many users are merged into one request. */
+const awardLoader = batcherPerStore((nostr: NStore) => createBatcher<string, NostrEvent[]>(async (pubkeys) => {
+  const wanted = new Set(pubkeys);
+  const awards = (await nostr.query([{ kinds: [8], '#p': pubkeys, limit: pubkeys.length * 20 }]))
+    .filter(validateBadgeAward);
+  const byUser = new Map<string, NostrEvent[]>(pubkeys.map(pubkey => [pubkey, []]));
+  for (const award of awards) {
+    for (const [name, pubkey] of award.tags) {
+      if (name === 'p' && wanted.has(pubkey)) byUser.get(pubkey)?.push(award);
+    }
+  }
+  return byUser;
+}));
 
 // Hook to get badge awards for a user
 export function useUserBadgeAwards(userPubkey: string) {
@@ -8,19 +23,7 @@ export function useUserBadgeAwards(userPubkey: string) {
 
   return useQuery({
     queryKey: ['user-badge-awards', userPubkey],
-    queryFn: async (c) => {
-      const { signal } = c;
-
-      const events = await nostr.query([
-        {
-          kinds: [8], // Badge Award (NIP-58)
-          '#p': [userPubkey],
-          limit: 100,
-        }
-      ], { signal });
-
-      return events.filter(validateBadgeAward);
-    },
+    queryFn: async () => (await awardLoader(nostr)(userPubkey)) ?? [],
     enabled: !!userPubkey,
   });
 }

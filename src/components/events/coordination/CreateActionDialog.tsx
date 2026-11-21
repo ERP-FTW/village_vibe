@@ -72,7 +72,8 @@ export function CreateActionDialog({ event, open, onOpenChange }: CreateActionDi
       title: formData.title.trim(),
       description: formData.description.trim(),
       priority: formData.priority as 'low' | 'medium' | 'high' | 'urgent',
-      dueDate: formData.dueDate ? new Date(formData.dueDate).getTime() / 1000 : undefined,
+      // Date inputs give YYYY-MM-DD; parse as local midnight, not UTC.
+      dueDate: formData.dueDate ? new Date(`${formData.dueDate}T00:00`).getTime() / 1000 : undefined,
     }, {
       onSuccess: () => {
         toast({

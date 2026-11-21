@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ZapButton } from '@/components/ZapButton';
+import { createStoryShareLinks } from '@/lib/nostrLinks';
 import { ShareButton } from '@/components/ShareButton';
 import { StoryModerationDialog } from './StoryModerationDialog';
 import { TribeName } from '@/components/tribes/TribeName';
@@ -142,7 +143,7 @@ export function StoryCard({
 
           <div className="flex flex-wrap gap-2">
             {showTribeTag && storyData.tribe && (
-              <TribeName tribeTag={storyData.tribe} />
+              <TribeName tribeTag={storyData.tribe} memberPubkey={story.pubkey} />
             )}
 
             {showVillageTag && storyData.villages.length > 0 && (
@@ -174,11 +175,7 @@ export function StoryCard({
             />
 
             <ShareButton
-              links={{
-                naddr: `naddr1${storyId}`, // This would need proper naddr encoding
-                web: `${window.location.origin}/story/${storyId}`,
-                text: `Check out this story: ${storyData.title} ${window.location.origin}/story/${storyId}`,
-              }}
+              links={createStoryShareLinks(story, storyData.title || 'Story')}
               title={storyData.title || 'Story'}
             />
 

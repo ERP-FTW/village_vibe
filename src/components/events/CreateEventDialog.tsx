@@ -56,6 +56,318 @@ interface EventFormData {
   occasion: string;
 }
 
+// Type-specific fields. Defined at module scope: a component declared inside another
+// component is a new type on every render, so React remounts it and inputs lose focus.
+function TypeSpecificFields({ formData, setFormData }: {
+  formData: EventFormData;
+  setFormData: React.Dispatch<React.SetStateAction<EventFormData>>;
+}) {
+  const addToArray = (field: 'foodSlots' | 'tasks' | 'instructors', value: string) => {
+    const item = value.trim();
+    if (item) setFormData(prev => prev[field].includes(item) ? prev : { ...prev, [field]: [...prev[field], item] });
+  };
+
+  const removeFromArray = (field: 'foodSlots' | 'tasks' | 'instructors', value: string) => {
+    setFormData(prev => ({ ...prev, [field]: prev[field].filter(item => item !== value) }));
+  };
+
+  const [newFoodSlot, setNewFoodSlot] = useState('');
+  const [newTask, setNewTask] = useState('');
+  const [newInstructor, setNewInstructor] = useState('');
+
+  const showPotluckFields = formData.etypes.includes('potluck');
+  const showServiceFields = formData.etypes.some(type => ['service-day', 'cleanup'].includes(type));
+  const showWorkshopFields = formData.etypes.includes('workshop') || formData.etypes.includes('skill-swap');
+  const showGameFields = formData.etypes.includes('trivia') || formData.etypes.includes('game');
+  const showCelebrationFields = formData.etypes.includes('celebration') || formData.etypes.includes('ritual');
+
+  return (
+    <div className="space-y-4">
+      <h4 className="font-medium text-sm">Additional Details</h4>
+
+      {/* Potluck Fields */}
+      {showPotluckFields && (
+        <Card>
+          <CardContent className="pt-4 space-y-3">
+            <h5 className="font-medium text-sm flex items-center gap-1">
+              🍲 Potluck Details
+            </h5>
+
+            <div className="space-y-2">
+              <Label>Food Slots</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g., main dish, dessert, drinks"
+                  value={newFoodSlot}
+                  onChange={(e) => setNewFoodSlot(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addToArray('foodSlots', newFoodSlot);
+                      setNewFoodSlot('');
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    addToArray('foodSlots', newFoodSlot);
+                    setNewFoodSlot('');
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {formData.foodSlots.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {formData.foodSlots.map((slot, index) => (
+                    <Badge key={index} variant="outline" className="gap-1 pr-1">
+                      {slot}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto p-0 ml-1 hover:bg-transparent"
+                        onClick={() => removeFromArray('foodSlots', slot)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="diet-notes">Diet Notes</Label>
+              <Input
+                id="diet-notes"
+                placeholder="e.g., vegetarian options available"
+                value={formData.dietNotes}
+                onChange={(e) => setFormData(prev => ({ ...prev, dietNotes: e.target.value }))}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Service/Cleanup Fields */}
+      {showServiceFields && (
+        <Card>
+          <CardContent className="pt-4 space-y-3">
+            <h5 className="font-medium text-sm flex items-center gap-1">
+              🧹 Service Details
+            </h5>
+
+            <div className="space-y-2">
+              <Label>Tasks</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g., trash pickup, weeding, painting"
+                  value={newTask}
+                  onChange={(e) => setNewTask(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addToArray('tasks', newTask);
+                      setNewTask('');
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    addToArray('tasks', newTask);
+                    setNewTask('');
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {formData.tasks.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {formData.tasks.map((task, index) => (
+                    <Badge key={index} variant="outline" className="gap-1 pr-1">
+                      {task}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto p-0 ml-1 hover:bg-transparent"
+                        onClick={() => removeFromArray('tasks', task)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="tools-needed">Tools Needed</Label>
+              <Input
+                id="tools-needed"
+                placeholder="e.g., gloves, rakes, trash bags"
+                value={formData.toolsNeeded}
+                onChange={(e) => setFormData(prev => ({ ...prev, toolsNeeded: e.target.value }))}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Workshop/Skill-swap Fields */}
+      {showWorkshopFields && (
+        <Card>
+          <CardContent className="pt-4 space-y-3">
+            <h5 className="font-medium text-sm flex items-center gap-1">
+              🛠️ Workshop Details
+            </h5>
+
+            <div className="space-y-2">
+              <Label>Instructors</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter instructor name or npub"
+                  value={newInstructor}
+                  onChange={(e) => setNewInstructor(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addToArray('instructors', newInstructor);
+                      setNewInstructor('');
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    addToArray('instructors', newInstructor);
+                    setNewInstructor('');
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {formData.instructors.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {formData.instructors.map((instructor, index) => (
+                    <Badge key={index} variant="outline" className="gap-1 pr-1">
+                      {instructor}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto p-0 ml-1 hover:bg-transparent"
+                        onClick={() => removeFromArray('instructors', instructor)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="materials">Materials</Label>
+              <Input
+                id="materials"
+                placeholder="e.g., laptop required, materials provided"
+                value={formData.materials}
+                onChange={(e) => setFormData(prev => ({ ...prev, materials: e.target.value }))}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Game/Trivia Fields */}
+      {showGameFields && (
+        <Card>
+          <CardContent className="pt-4 space-y-3">
+            <h5 className="font-medium text-sm flex items-center gap-1">
+              🎮 Game Details
+            </h5>
+
+            <div className="space-y-2">
+              <Label htmlFor="game-kind">Game Type</Label>
+              <Input
+                id="game-kind"
+                placeholder="e.g., trivia, board games, video games"
+                value={formData.gameKind}
+                onChange={(e) => setFormData(prev => ({ ...prev, gameKind: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Teams Mode</Label>
+              <div className="flex gap-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="teams-auto"
+                    checked={formData.teamsMode === 'auto'}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setFormData(prev => ({ ...prev, teamsMode: 'auto' }));
+                      }
+                    }}
+                  />
+                  <label htmlFor="teams-auto" className="text-sm cursor-pointer">
+                    Auto-assign teams
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="teams-custom"
+                    checked={formData.teamsMode === 'custom'}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setFormData(prev => ({ ...prev, teamsMode: 'custom' }));
+                      }
+                    }}
+                  />
+                  <label htmlFor="teams-custom" className="text-sm cursor-pointer">
+                    Custom teams
+                  </label>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Celebration/Ritual Fields */}
+      {showCelebrationFields && (
+        <Card>
+          <CardContent className="pt-4 space-y-3">
+            <h5 className="font-medium text-sm flex items-center gap-1">
+              🎉 Celebration Details
+            </h5>
+
+            <div className="space-y-2">
+              <Label htmlFor="occasion">Occasion</Label>
+              <Input
+                id="occasion"
+                placeholder="e.g., birthday, harvest, solstice"
+                value={formData.occasion}
+                onChange={(e) => setFormData(prev => ({ ...prev, occasion: e.target.value }))}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps) {
   const { user } = useCurrentUser();
   usePublicTribes(); // Keep hook active for potential future use
@@ -239,6 +551,7 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
       const result = await createEnhancedEvent({
         tribe: tribeSlug,
         title: formData.title.trim(),
+        summary: formData.summary.trim() || undefined,
         content: formData.description.trim(),
         start: startTimestamp,
         end: endTimestamp,
@@ -342,327 +655,12 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
     }
   };
 
-  // Get minimum date (today)
-  const today = new Date().toISOString().split('T')[0];
+  // Get minimum date (today, in the user's own timezone)
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-  // Helper function to handle adding/removing items from arrays
-  const addToArray = (field: 'foodSlots' | 'tasks' | 'instructors', value: string) => {
-    if (value.trim() && !formData[field].includes(value.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        [field]: [...prev[field], value.trim()]
-      }));
-    }
-  };
 
-  const removeFromArray = (field: 'foodSlots' | 'tasks' | 'instructors', value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: prev[field].filter(item => item !== value)
-    }));
-  };
 
-  // Type-specific fields component
-  const TypeSpecificFields = ({ formData, setFormData }: {
-    formData: EventFormData;
-    setFormData: React.Dispatch<React.SetStateAction<EventFormData>>;
-  }) => {
-    const [newFoodSlot, setNewFoodSlot] = useState('');
-    const [newTask, setNewTask] = useState('');
-    const [newInstructor, setNewInstructor] = useState('');
-
-    const showPotluckFields = formData.etypes.includes('potluck');
-    const showServiceFields = formData.etypes.some(type => ['service-day', 'cleanup'].includes(type));
-    const showWorkshopFields = formData.etypes.includes('workshop') || formData.etypes.includes('skill-swap');
-    const showGameFields = formData.etypes.includes('trivia') || formData.etypes.includes('game');
-    const showCelebrationFields = formData.etypes.includes('celebration') || formData.etypes.includes('ritual');
-
-    return (
-      <div className="space-y-4">
-        <h4 className="font-medium text-sm">Additional Details</h4>
-
-        {/* Potluck Fields */}
-        {showPotluckFields && (
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <h5 className="font-medium text-sm flex items-center gap-1">
-                🍲 Potluck Details
-              </h5>
-
-              <div className="space-y-2">
-                <Label>Food Slots</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="e.g., main dish, dessert, drinks"
-                    value={newFoodSlot}
-                    onChange={(e) => setNewFoodSlot(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addToArray('foodSlots', newFoodSlot);
-                        setNewFoodSlot('');
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      addToArray('foodSlots', newFoodSlot);
-                      setNewFoodSlot('');
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {formData.foodSlots.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {formData.foodSlots.map((slot, index) => (
-                      <Badge key={index} variant="outline" className="gap-1 pr-1">
-                        {slot}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-auto p-0 ml-1 hover:bg-transparent"
-                          onClick={() => removeFromArray('foodSlots', slot)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="diet-notes">Diet Notes</Label>
-                <Input
-                  id="diet-notes"
-                  placeholder="e.g., vegetarian options available"
-                  value={formData.dietNotes}
-                  onChange={(e) => setFormData(prev => ({ ...prev, dietNotes: e.target.value }))}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Service/Cleanup Fields */}
-        {showServiceFields && (
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <h5 className="font-medium text-sm flex items-center gap-1">
-                🧹 Service Details
-              </h5>
-
-              <div className="space-y-2">
-                <Label>Tasks</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="e.g., trash pickup, weeding, painting"
-                    value={newTask}
-                    onChange={(e) => setNewTask(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addToArray('tasks', newTask);
-                        setNewTask('');
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      addToArray('tasks', newTask);
-                      setNewTask('');
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {formData.tasks.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {formData.tasks.map((task, index) => (
-                      <Badge key={index} variant="outline" className="gap-1 pr-1">
-                        {task}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-auto p-0 ml-1 hover:bg-transparent"
-                          onClick={() => removeFromArray('tasks', task)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tools-needed">Tools Needed</Label>
-                <Input
-                  id="tools-needed"
-                  placeholder="e.g., gloves, rakes, trash bags"
-                  value={formData.toolsNeeded}
-                  onChange={(e) => setFormData(prev => ({ ...prev, toolsNeeded: e.target.value }))}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Workshop/Skill-swap Fields */}
-        {showWorkshopFields && (
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <h5 className="font-medium text-sm flex items-center gap-1">
-                🛠️ Workshop Details
-              </h5>
-
-              <div className="space-y-2">
-                <Label>Instructors</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter instructor name or npub"
-                    value={newInstructor}
-                    onChange={(e) => setNewInstructor(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addToArray('instructors', newInstructor);
-                        setNewInstructor('');
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      addToArray('instructors', newInstructor);
-                      setNewInstructor('');
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {formData.instructors.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {formData.instructors.map((instructor, index) => (
-                      <Badge key={index} variant="outline" className="gap-1 pr-1">
-                        {instructor}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-auto p-0 ml-1 hover:bg-transparent"
-                          onClick={() => removeFromArray('instructors', instructor)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="materials">Materials</Label>
-                <Input
-                  id="materials"
-                  placeholder="e.g., laptop required, materials provided"
-                  value={formData.materials}
-                  onChange={(e) => setFormData(prev => ({ ...prev, materials: e.target.value }))}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Game/Trivia Fields */}
-        {showGameFields && (
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <h5 className="font-medium text-sm flex items-center gap-1">
-                🎮 Game Details
-              </h5>
-
-              <div className="space-y-2">
-                <Label htmlFor="game-kind">Game Type</Label>
-                <Input
-                  id="game-kind"
-                  placeholder="e.g., trivia, board games, video games"
-                  value={formData.gameKind}
-                  onChange={(e) => setFormData(prev => ({ ...prev, gameKind: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Teams Mode</Label>
-                <div className="flex gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="teams-auto"
-                      checked={formData.teamsMode === 'auto'}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setFormData(prev => ({ ...prev, teamsMode: 'auto' }));
-                        }
-                      }}
-                    />
-                    <label htmlFor="teams-auto" className="text-sm cursor-pointer">
-                      Auto-assign teams
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="teams-custom"
-                      checked={formData.teamsMode === 'custom'}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setFormData(prev => ({ ...prev, teamsMode: 'custom' }));
-                        }
-                      }}
-                    />
-                    <label htmlFor="teams-custom" className="text-sm cursor-pointer">
-                      Custom teams
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Celebration/Ritual Fields */}
-        {showCelebrationFields && (
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <h5 className="font-medium text-sm flex items-center gap-1">
-                🎉 Celebration Details
-              </h5>
-
-              <div className="space-y-2">
-                <Label htmlFor="occasion">Occasion</Label>
-                <Input
-                  id="occasion"
-                  placeholder="e.g., birthday, harvest, solstice"
-                  value={formData.occasion}
-                  onChange={(e) => setFormData(prev => ({ ...prev, occasion: e.target.value }))}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    );
-  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

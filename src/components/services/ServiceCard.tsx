@@ -143,7 +143,7 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
                 </Badge>
 
                 {serviceData.tribe && (
-                  <TribeName tribeTag={serviceData.tribe} />
+                  <TribeName tribeTag={serviceData.tribe} memberPubkey={event.pubkey} />
                 )}
 
                 {distance && (

@@ -4,18 +4,21 @@ import { Users } from 'lucide-react';
 
 interface TribeNameProps {
   tribeTag?: string;
+  /** Author of the content, used to pick the right tribe when several share a d tag. */
+  memberPubkey?: string;
   className?: string;
   showIcon?: boolean;
   variant?: 'default' | 'secondary' | 'outline' | 'destructive';
 }
 
-export function TribeName({ 
-  tribeTag, 
+export function TribeName({
+  tribeTag,
+  memberPubkey,
   className = '', 
   showIcon = true,
   variant = 'secondary'
 }: TribeNameProps) {
-  const { data: tribeData } = useTribeName(tribeTag);
+  const { data: tribeData } = useTribeName(tribeTag, memberPubkey);
 
   if (!tribeTag) return null;
 

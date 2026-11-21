@@ -1,7 +1,6 @@
 import type { NostrEvent } from "@nostrify/nostrify";
 import { ShareButton } from "@/components/ShareButton";
 import { createEventShareLinks } from "@/lib/nostrLinks";
-import { debugNaddr } from "@/utils/debugNaddr";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,27 +16,14 @@ export function EventHeader({ event, userRSVP }: EventHeaderProps) {
   const titleTag = event.tags.find(([name]) => name === 'title')?.[1];
   const summaryTag = event.tags.find(([name]) => name === 'summary')?.[1];
   const imageTag = event.tags.find(([name]) => name === 'image')?.[1];
-  const locationTag = event.tags.find(([name]) => name === 'location')?.[1];
+  // Enhanced events store the venue in `place`; NIP-52 calendar events use `location`.
+  const locationTag = event.tags.find(([name]) => name === 'place' || name === 'location')?.[1];
   const startTag = event.tags.find(([name]) => name === 'start')?.[1];
   const endTag = event.tags.find(([name]) => name === 'end')?.[1];
 
   const eventTitle = titleTag || 'Untitled Event';
 
-  // Debug logging for event sharing
-  const shareLinks = createEventShareLinks(event.pubkey, dTag, eventTitle);
-  console.log('Event Header Debug:', {
-    eventId: event.id.slice(0, 8),
-    eventKind: event.kind,
-    eventPubkey: event.pubkey.slice(0, 8),
-    dTag,
-    eventTitle,
-    hasTitle: !!titleTag,
-    hasStart: !!startTag,
-    hasLocation: !!locationTag,
-    allTags: event.tags,
-    shareLinks,
-    decodedNaddr: debugNaddr(shareLinks.naddr)
-  });
+  const shareLinks = createEventShareLinks(event, eventTitle);
 
   // Parse timestamps
   const startTime = startTag ? new Date(parseInt(startTag) * 1000) : null;

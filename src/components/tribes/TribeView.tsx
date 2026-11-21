@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { useTribe } from "@/hooks/useTribes";
 import { useTribeEvents } from "@/hooks/useEvents";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -22,8 +23,11 @@ interface TribeViewProps {
   tribeId: string;
 }
 
+const TRIBE_TABS = ['events', 'stories', 'services', 'members', 'badges', 'admin'];
+
 export function TribeView({ tribeId }: TribeViewProps) {
   const { user } = useCurrentUser();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: tribe, isLoading: tribeLoading, error: tribeError, failureCount, refetch: refetchTribe, isFetching: tribeFetching } = useTribe(tribeId);
   const { data: events, error: eventsError, isLoading: eventsLoading, refetch: refetchEvents, isFetching: eventsFetching } = useTribeEvents(tribeId);
 
@@ -115,6 +119,16 @@ export function TribeView({ tribeId }: TribeViewProps) {
   const canCreateEvents = canCreateTribeEvents(tribe, user?.pubkey);
   const isModerator = isTribeModerator(tribe, user?.pubkey);
 
+  // The active tab lives in the URL (?tab=services) so QR codes and shared links can open it.
+  const requestedTab = searchParams.get('tab') ?? 'events';
+  const activeTab = TRIBE_TABS.includes(requestedTab) && (requestedTab !== 'admin' || isModerator) ? requestedTab : 'events';
+  const selectTab = (tab: string) => setSearchParams(params => {
+    const next = new URLSearchParams(params);
+    if (tab === 'events') next.delete('tab');
+    else next.set('tab', tab);
+    return next;
+  }, { replace: true });
+
   // Function to force refresh all tribe data
   const handleRefreshAll = async () => {
     // Force refetch with cache bypass
@@ -140,8 +154,9 @@ export function TribeView({ tribeId }: TribeViewProps) {
 
       <TribeHeader tribe={tribe} />
 
-      <Tabs defaultValue="events" className="space-y-6">
-        <div className="flex justify-between items-center">
+      <Tabs value={activeTab} onValueChange={selectTab} className="space-y-6">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList>
             <TabsTrigger value="events" className="flex items-center gap-2">
               <Calendar className="h-4 w-4" />
@@ -170,6 +185,7 @@ export function TribeView({ tribeId }: TribeViewProps) {
               </TabsTrigger>
             )}
           </TabsList>
+          </div>
 
           {canCreateEvents && (
             <CreateEventDialog tribeId={tribeId}>

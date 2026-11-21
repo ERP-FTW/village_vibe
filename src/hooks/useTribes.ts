@@ -1,7 +1,7 @@
 import { useNostr } from '@nostrify/react';
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import type { NostrEvent, NStore } from '@nostrify/nostrify';
-import { tribeIdOf, tribeModerators } from '@/lib/tribes';
+import { tribeIdOf, tribeMembers, tribeModerators } from '@/lib/tribes';
 
 export type TribeRequestStatus = 'none' | 'pending' | 'rejected';
 
@@ -82,37 +82,24 @@ export function useTribe(tribeId: string) {
 }
 
 // Hook to get tribe name from tribe tag value
-export function useTribeName(tribeTag?: string) {
+export function useTribeName(tribeTag?: string, memberPubkey?: string) {
   const { nostr } = useNostr();
 
   return useQuery({
     queryKey: ['tribe-name', tribeTag],
-    queryFn: async (c) => {
-      if (!tribeTag) return null;
-
-      const { signal } = c;
-
-      // Query for community definitions with this d tag
-      const events = await nostr.query([
-        {
-          kinds: [34550], // Community Definition (NIP-72)
-          '#d': [tribeTag],
-          limit: 10,
-        }
-      ], { signal });
-
-      if (events.length === 0) return null;
-
-      // Return the first valid tribe event
-      const tribe = events.find(validateTribeEvent);
+    queryFn: async ({ signal }) => {
+      if (!tribeTag) return [];
+      // Content only carries the tribe's d tag, so several tribes can match.
+      const events = await nostr.query([{ kinds: [34550], '#d': [tribeTag], limit: 10 }], { signal });
+      return events.filter(validateTribeEvent);
+    },
+    // Prefer the tribe the content's author actually belongs to, then the newest.
+    select: (candidates: NostrEvent[]) => {
+      const tribe = [...candidates]
+        .sort((a, b) => b.created_at - a.created_at)
+        .sort((a, b) => Number(!!memberPubkey && tribeMembers(b).has(memberPubkey)) - Number(!!memberPubkey && tribeMembers(a).has(memberPubkey)))[0];
       if (!tribe) return null;
-
-      // Extract tribe name
-      const name = tribe.tags.find(([name]) => name === 'name')?.[1] || tribeTag;
-      return {
-        name,
-        tribe,
-      };
+      return { name: tribe.tags.find(([name]) => name === 'name')?.[1] || tribeTag || '', tribe };
     },
     enabled: !!tribeTag,
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes

@@ -13,6 +13,50 @@ Line numbers refer to commit `3433ddc`.
 
 ---
 
+## Status (updated 2026-11-21)
+
+**Fixed** on branch `claude/wizardly-ramanujan-bbqidj`: [PR #2](https://github.com/ERP-FTW/village_vibe/pull/2), merged after review, plus follow-up commits.
+
+| Area | What changed |
+|---|---|
+| §1 CI | `npm test` passes: tsc, eslint, 34 tests, build. Deploy runs the tests first. `npm ci` everywhere; scripts no longer run `npm i`. |
+| §2 Relay layer | `RelayPool`: returns 300 ms after the first relay completes with matches. Waits at most 2 s for a match after an empty answer. Errors only when no relay completed. Single 5 s budget, one retry. The health check probes only the selected relay, with no polling. |
+| §3 Publishing | Mutations sign and publish before showing success, then refresh the affected queries. DMs are encrypted. Drafts are kept on failure. |
+| §4a/b Tribe authority | Creator-only, read-latest-then-write tribe updates (`useUpdateTribe`). No more forks, lost approvals or duplicate members. `event_creator` role now works. Only moderator rejections count. |
+| §4a Promotion | Labels only, unless the promoter is the author. |
+| §4c Tribe feeds | Query the tribe's members instead of only the owner. No fallback to the owner's other tribes. |
+| §4d Hide labels | Honoured in tribe feeds when issued by the tribe's moderators. |
+| §5 Security/privacy | Plaintext admin DMs gone. Profile URLs restricted to http(s). NIP-58 badge issuer check. Private tribes hidden from Discover and from non-members' profile views. DM list crash fixed. Decrypted DMs cached. Zap requests fixed. `ProfileZapDialog` removed. |
+| §6 Broken features | Share links/QR use the real kind and a valid naddr. QR route fixed and `?tab=` honoured. NIP-19 profile/note/naddr views. `/t/:tag`. Check-ins on 36959. Venue and summary display. Create-event focus bug. Local dates. Author-aware tribe names. |
+| §7 UX | Mobile menu. Debug panels dev-only. Search filters locally. Preferences sync. Route code splitting: 801 KB main bundle, was 1.29 MB. 41 `console.log` calls removed. |
+| §8 Dead code | Dead files, barrels and unused hooks removed. |
+
+**Still open:**
+- **§4c Tag model:** content still links to tribes and villages with multi-letter `tribe`/`village` tags. Moving to `a` (tribe coordinate) and single-letter village tags needs a data migration decision. Until then, village feeds rely on client-side filtering, and tribes larger than 500 members exceed the author-list cap.
+- **§4d Remaining moderation gaps:**
+  - Promotion labels are still accepted from any author in village feeds.
+  - Self-tagged `village` content still appears without approval.
+  - Coordination roles, items and tasks are accepted from anyone.
+  - "Featured" is still the first six stories.
+- **§5 Remaining privacy and security work:**
+  - DMs are still NIP-04 only (no NIP-17).
+  - ProfileSettings should reuse `EditProfileForm`.
+  - Check-in "verification" is still self-reported.
+  - Host-signed RSVPs still exist (`EventDiscussionRSVP`).
+- **§6 Remaining broken features:**
+  - Service match schema mismatch (`by` tag).
+  - Claims modelling (random d-tags, per-event counts).
+  - Roles tab grouping.
+  - RSVP keyword detection.
+  - Markdown rendering for stories.
+  - Hard-coded Seattle/Detroit coordinates in `l` tags.
+- **§7 N+1 queries:** per-card author, badge and zap queries are not batched yet.
+- **§8 Duplicates:** the three moderation dialogs, the discussion components (vs `CommentsSection`), and `DownloadNIP` (vs NIP.md) are still duplicated. The four identical prompt files remain.
+- **§9 Docs:** NIP.md still lacks the services, tribes, check-in and privacy kinds.
+- **Not verifiable here:** this environment blocks WebSocket connections to relays. The relay and publish behaviour was verified with simulated relays and a headless-browser smoke test, not against live relays.
+
+---
+
 ## Contents
 1. [Build and CI health](#1-build-and-ci-health)
 2. [Root cause of the slow or empty loads (the relay layer)](#2-root-cause-of-the-slow-or-empty-loads)

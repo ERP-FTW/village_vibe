@@ -31,6 +31,12 @@ export interface RelayCursor {
    * wraps that were passed over, not a place to continue from: no later read clears it.
    */
   skippedTimestamp?: true;
+  /**
+   * The refresh couldn't read the recent window in full (page budget or a failed request),
+   * so `nextUntil` is a place inside the window. The next refresh continues it; reading
+   * older history must not start from here.
+   */
+  windowIncomplete?: true;
 }
 
 export interface InboxRead {
@@ -116,9 +122,9 @@ export async function readRecentWraps(
         until = result.nextUntil;
         cursor = { ...cursor, nextUntil: until };
       }
-      if (!windowRead) return { ...cursor, gap: 'page-limit' };
+      if (!windowRead) return { ...cursor, gap: 'page-limit', windowIncomplete: true };
     } catch (error) {
-      return failure({ ...cursor, nextUntil: until }, error, signal);
+      return failure({ ...cursor, nextUntil: until, windowIncomplete: true }, error, signal);
     }
     // One page of history before the window
     return readOlder(nostr, pubkey, cursor, wraps, seen, signal);

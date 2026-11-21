@@ -143,8 +143,9 @@ export function useLoadOlderMessages() {
         const budget = recentPageBudget.get(user.pubkey) ?? MAX_RECENT_PAGES;
         recentPageBudget.set(user.pubkey, Math.min(budget + MAX_RECENT_PAGES, RECENT_PAGES_CAP));
       }
-      // Older history beyond the window, for relays whose window is complete
-      const beyond = cursors.filter(cursor => cursor.gap !== 'page-limit');
+      // Older history beyond the window, for relays whose window is complete. A window the
+      // refresh couldn't finish is retried by the refresh below, never read as older history.
+      const beyond = cursors.filter(cursor => !cursor.windowIncomplete);
       const stored = olderHistory.get(user.pubkey) ?? { wraps: new Map<string, NostrEvent>(), cursors: [] };
       const read = await readOlderWraps(nostr, user.pubkey, beyond, stored.wraps.keys());
       read.wraps.forEach(wrap => stored.wraps.set(wrap.id, wrap));

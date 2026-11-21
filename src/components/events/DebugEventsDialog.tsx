@@ -11,6 +11,25 @@ import { Bug, Search, CheckCircle, XCircle, AlertCircle, Copy } from "lucide-rea
 import { useToast } from "@/hooks/useToast";
 import { useQuery } from "@tanstack/react-query";
 
+interface DebugQuery {
+  name: string;
+  filter?: import("@nostrify/nostrify").NostrFilter;
+  error?: string;
+  count?: number;
+  filtered?: number;
+  total?: number;
+  lastCreatedMatch?: boolean;
+  events?: {
+    id: string;
+    kind: number;
+    pubkey: string;
+    dTag?: string;
+    title?: string;
+    created: string;
+    tribe?: string;
+  }[];
+}
+
 interface DebugEventsDialogProps {
   tribeId: string;
   children?: React.ReactNode;
@@ -32,20 +51,20 @@ export function DebugEventsDialog({ tribeId, children }: DebugEventsDialogProps)
     queryKey: ['debug-events', tribeId, isOpen],
     enabled: isOpen,
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Check for last created event in sessionStorage
       const lastCreatedEventStr = sessionStorage.getItem('lastCreatedEvent');
       const lastCreatedEvent = lastCreatedEventStr ? JSON.parse(lastCreatedEventStr) : null;
 
-      const results: any = {
+      const results = {
         timestamp: new Date().toISOString(),
         tribeId,
         tribePubkey,
         tribeDTag,
         userPubkey: user?.pubkey,
         lastCreatedEvent,
-        queries: [],
+        queries: [] as DebugQuery[],
       };
 
       // Query 0: If we have last created event, try to find it by ID
@@ -163,7 +182,7 @@ export function DebugEventsDialog({ tribeId, children }: DebugEventsDialogProps)
     });
   };
 
-  const totalEvents = debugData?.queries.reduce((sum: number, q: any) =>
+  const totalEvents = debugData?.queries.reduce((sum: number, q) =>
     sum + (q.count || q.filtered || 0), 0) || 0;
 
   return (
@@ -270,13 +289,13 @@ export function DebugEventsDialog({ tribeId, children }: DebugEventsDialogProps)
             </div>
           ) : (
             <div className="space-y-4">
-              {debugData?.queries.map((query: any, idx: number) => (
+              {debugData?.queries.map((query, idx: number) => (
                 <Card key={idx}>
                   <CardHeader>
                     <CardTitle className="text-sm flex items-center gap-2">
                       {query.error ? (
                         <XCircle className="h-4 w-4 text-destructive" />
-                      ) : (query.count || query.filtered) > 0 ? (
+                      ) : (query.count || query.filtered || 0) > 0 ? (
                         <CheckCircle className="h-4 w-4 text-green-500" />
                       ) : (
                         <AlertCircle className="h-4 w-4 text-yellow-500" />
@@ -307,7 +326,7 @@ export function DebugEventsDialog({ tribeId, children }: DebugEventsDialogProps)
                           Sample Events ({query.events.length} of {query.count || query.filtered}):
                         </p>
                         <div className="space-y-2">
-                          {query.events.map((event: any, i: number) => (
+                          {query.events.map((event, i: number) => (
                             <div key={i} className="bg-muted p-2 rounded text-xs font-mono">
                               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                                 <div><span className="text-muted-foreground">ID:</span> {event.id}</div>

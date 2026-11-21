@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { NostrEvent } from "@nostrify/nostrify";
-import { useEventCoordinationData, useCreateRole } from "@/hooks/useEventCoordination";
+import { useEventCoordinationData } from "@/hooks/useEventCoordination";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";

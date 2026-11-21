@@ -18,7 +18,7 @@ interface EventDiscussionRSVPProps {
 
 export function EventDiscussionRSVP({ event, comment, rsvpStatus }: EventDiscussionRSVPProps) {
   const { user } = useCurrentUser();
-  const { mutate: createEvent, isPending: isCreating } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isCreating } = useNostrPublish();
   const { toast } = useToast();
   const author = useAuthor(comment.pubkey);
   const [isProcessed, setIsProcessed] = useState(false);
@@ -49,7 +49,7 @@ export function EventDiscussionRSVP({ event, comment, rsvpStatus }: EventDiscuss
         tags.push(['fb', 'busy']);
       }
 
-      createEvent({
+      await createEvent({
         kind: 31925, // Calendar Event RSVP (NIP-52)
         content: `RSVP created from discussion reply: "${comment.content.slice(0, 100)}${comment.content.length > 100 ? '...' : ''}"`,
         tags,

@@ -9,14 +9,14 @@ import type { NostrEvent } from '@nostrify/nostrify';
 export function useRSVPReplies(eventPubkey: string, eventDTag: string) {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
-  const { mutate: createEvent } = useNostrPublish();
+  const { mutateAsync: createEvent } = useNostrPublish();
   const { toast } = useToast();
 
   // Query for replies to event announcement notes
   const { data: replies } = useQuery({
     queryKey: ['rsvp-replies', eventPubkey, eventDTag],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Look for kind 1 notes that reference this event
       const events = await nostr.query([{
@@ -36,7 +36,7 @@ export function useRSVPReplies(eventPubkey: string, eventDTag: string) {
     queryFn: async (c) => {
       if (!replies || replies.length === 0) return [];
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Get replies to announcement notes
       const replyEvents = await nostr.query([{
@@ -97,7 +97,7 @@ export function useRSVPReplies(eventPubkey: string, eventDTag: string) {
           tags.push(['fb', 'busy']);
         }
 
-        createEvent({
+        await createEvent({
           kind: 31925, // Calendar Event RSVP (NIP-52)
           content: reply.content,
           tags,

@@ -1,3 +1,4 @@
+import { useAuthor } from '@/hooks/useAuthor';
 import { useState, useEffect } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNostrPublish } from "@/hooks/useNostrPublish";
@@ -14,8 +15,9 @@ import { Loader2, Save, User, Eye } from "lucide-react";
 
 export function ProfileSettings() {
   const { user, metadata } = useCurrentUser();
-  const { mutate: createEvent, isPending } = useNostrPublish();
-  const { data: existingPrivacySettings } = useProfilePrivacy(user?.pubkey || "");
+  const author = useAuthor(user?.pubkey);
+  const { mutateAsync: createEvent, isPending } = useNostrPublish();
+  const { data: existingPrivacySettings, isSuccess: privacyLoaded } = useProfilePrivacy(user?.pubkey || "");
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -67,22 +69,25 @@ export function ProfileSettings() {
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user || !author.isSuccess || !privacyLoaded) return;
 
     try {
       // Update profile metadata (kind 0)
-      const cleanedData = Object.fromEntries(
-        Object.entries(formData).filter(([, value]) => value.trim() !== "")
-      );
+      const cleanedData = JSON.parse(author.data.event?.content ?? '{}');
+      if (!cleanedData || typeof cleanedData !== 'object' || Array.isArray(cleanedData)) throw new Error('Invalid profile');
+      for (const [field, value] of Object.entries(formData)) {
+        if (value.trim()) cleanedData[field] = value;
+        else delete cleanedData[field];
+      }
 
-      createEvent({
+      await createEvent({
         kind: 0,
         content: JSON.stringify(cleanedData),
         tags: [],
       });
 
       // Save privacy settings (kind 30078 - Application-specific data)
-      createEvent({
+      await createEvent({
         kind: 30078,
         content: JSON.stringify(privacySettings),
         tags: [
@@ -271,7 +276,7 @@ export function ProfileSettings() {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={isPending} size="lg">
+        <Button onClick={handleSave} disabled={isPending || !author.isSuccess || !privacyLoaded} size="lg">
           {isPending ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           ) : (

@@ -26,7 +26,7 @@ interface ShareButtonProps {
 export function ShareButton({ links, title, children, isEvent, eventDetails, pubkey, dTag }: ShareButtonProps) {
   const { toast } = useToast();
   const { user } = useCurrentUser();
-  const { mutate: createEvent, isPending: isPublishing } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isPublishing } = useNostrPublish();
   const [open, setOpen] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [qrCodes, setQrCodes] = useState<{
@@ -109,7 +109,7 @@ Reply with "yes", "no", or "maybe" to RSVP quickly!
 
 #event #calendar`;
 
-        createEvent({
+        await createEvent({
           kind: 1,
           content,
           tags: [
@@ -130,7 +130,7 @@ Join here: ${links.web}
 
 #tribe #community`;
 
-        createEvent({
+        await createEvent({
           kind: 1,
           content,
           tags: [

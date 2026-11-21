@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useCreateStory } from '@/hooks/useStories';
-import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useUploadFile } from '@/hooks/useUploadFile';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
@@ -36,7 +35,6 @@ export function CreateStoryDialog({
   const { user } = useCurrentUser();
   const { toast } = useToast();
   const { mutate: createStory, isPending: isCreating } = useCreateStory();
-  const { mutate: publishEvent } = useNostrPublish();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
   
   const [open, setOpen] = useState(false);
@@ -86,32 +84,20 @@ export function CreateStoryDialog({
         lon: formData.lon ? parseFloat(formData.lon) : undefined,
         refEventId: refEventId,
       }, {
-        onSuccess: (result) => {
-          publishEvent(result.eventData, {
-            onSuccess: () => {
-              toast({
-                title: "Story created!",
-                description: "Your story has been shared with the tribe.",
-              });
-              setOpen(false);
-              setFormData({
-                title: '',
-                summary: '',
-                content: '',
-                cover: '',
-                place: '',
-                lat: '',
-                lon: '',
-              });
-            },
-            onError: (error) => {
-              console.error('Failed to publish story:', error);
-              toast({
-                title: "Failed to publish",
-                description: "Your story couldn't be published. Please try again.",
-                variant: "destructive",
-              });
-            },
+        onSuccess: () => {
+          toast({
+            title: "Story created!",
+            description: "Your story has been shared with the tribe.",
+          });
+          setOpen(false);
+          setFormData({
+            title: '',
+            summary: '',
+            content: '',
+            cover: '',
+            place: '',
+            lat: '',
+            lon: '',
           });
         },
         onError: (error) => {

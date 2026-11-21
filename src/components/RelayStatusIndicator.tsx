@@ -1,5 +1,5 @@
+import { readRelayUrls } from '@/lib/RelayPool';
 import { useAppContext } from "@/hooks/useAppContext";
-import { Badge } from "@/components/ui/badge";
 import { Wifi } from "lucide-react";
 
 /**
@@ -8,11 +8,7 @@ import { Wifi } from "lucide-react";
 export function RelayStatusIndicator() {
   const { config, presetRelays } = useAppContext();
   
-  const activeRelays = [
-    config.relayUrl,
-    'wss://ditto.pub/relay',
-    'wss://relay.damus.io',
-  ].filter((url, index, self) => self.indexOf(url) === index); // Remove duplicates
+  const activeRelays = readRelayUrls(config.relayUrl, presetRelays);
   
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -26,7 +26,7 @@ interface VillageAssociationDialogProps {
 export function VillageAssociationDialog({ children, tribe }: VillageAssociationDialogProps) {
   const { user } = useCurrentUser();
   const { toast } = useToast();
-  const { mutate: publishEvent, isPending } = useNostrPublish();
+  const { mutateAsync: publishEvent, isPending } = useNostrPublish();
   
   const [open, setOpen] = useState(false);
   const [newVillage, setNewVillage] = useState('');
@@ -84,23 +84,12 @@ export function VillageAssociationDialog({ children, tribe }: VillageAssociation
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      publishEvent(updatedTribe, {
-        onSuccess: () => {
-          toast({
-            title: "Villages updated",
-            description: `Tribe is now associated with ${villages.length} village(s).`,
-          });
-          setOpen(false);
-        },
-        onError: (error) => {
-          console.error('Failed to update tribe villages:', error);
-          toast({
-            title: "Update failed",
-            description: "Failed to update village associations. Please try again.",
-            variant: "destructive",
-          });
-        },
+      await publishEvent(updatedTribe);
+      toast({
+        title: "Villages updated",
+        description: `Tribe is now associated with ${villages.length} village(s).`,
       });
+      setOpen(false);
     } catch (error) {
       console.error('Village association error:', error);
       toast({

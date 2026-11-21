@@ -9,7 +9,7 @@ export function useTribeBadges(tribePubkey: string) {
   return useQuery({
     queryKey: ['tribe-badges', tribePubkey],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       const events = await nostr.query([
         {
@@ -31,7 +31,7 @@ export function useUserBadgeAwards(userPubkey: string) {
   return useQuery({
     queryKey: ['user-badge-awards', userPubkey],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       const events = await nostr.query([
         {
@@ -53,7 +53,7 @@ export function useUserProfileBadges(userPubkey: string) {
   return useQuery({
     queryKey: ['user-profile-badges', userPubkey],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       const events = await nostr.query([
         {
@@ -76,7 +76,7 @@ export function useEventBadgeAwards(eventId: string) {
   return useQuery({
     queryKey: ['event-badge-awards', eventId],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       const [pubkey, dTag] = eventId.split(':');
       if (!pubkey || !dTag) return [];
@@ -110,7 +110,7 @@ export function useBadgeData(badgeAwards: NostrEvent[]) {
     queryFn: async (c) => {
       if (badgeAwards.length === 0) return [];
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Extract unique badge definition coordinates from awards
       const badgeCoords = Array.from(new Set(

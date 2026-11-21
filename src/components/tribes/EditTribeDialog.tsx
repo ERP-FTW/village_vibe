@@ -21,7 +21,7 @@ interface EditTribeDialogProps {
 
 export function EditTribeDialog({ children, tribe }: EditTribeDialogProps) {
   const { user } = useCurrentUser();
-  const { mutate: createEvent, isPending: isUpdating } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isUpdating } = useNostrPublish();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
   const { toast } = useToast();
   
@@ -102,7 +102,7 @@ export function EditTribeDialog({ children, tribe }: EditTribeDialogProps) {
         newTags.push(['closed']);
       }
 
-      createEvent({
+      await createEvent({
         kind: 34550, // Community Definition (NIP-72)
         content: formData.description.trim(),
         tags: newTags,

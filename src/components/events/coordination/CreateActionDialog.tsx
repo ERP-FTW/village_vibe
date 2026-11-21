@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useCreateAction } from "@/hooks/useEventCoordination";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +25,6 @@ const PRIORITIES = [
 
 export function CreateActionDialog({ event, open, onOpenChange }: CreateActionDialogProps) {
   const { mutate: createAction, isPending: isCreating } = useCreateAction();
-  const { mutateAsync: publish } = useNostrPublish();
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -76,39 +74,18 @@ export function CreateActionDialog({ event, open, onOpenChange }: CreateActionDi
       priority: formData.priority as 'low' | 'medium' | 'high' | 'urgent',
       dueDate: formData.dueDate ? new Date(formData.dueDate).getTime() / 1000 : undefined,
     }, {
-      onSuccess: async (result) => {
-        console.log('✅ Action data created:', {
-          actionId: result.actionId,
-          kind: result.eventData.kind,
-          tags: result.eventData.tags,
+      onSuccess: () => {
+        toast({
+          title: "Success",
+          description: "Task created successfully",
         });
-
-        try {
-          console.log('📤 Publishing action to Nostr...');
-          const published = await publish(result.eventData);
-          console.log('✅ Action published successfully:', {
-            id: published.id,
-            actionId: result.actionId,
-          });
-          toast({
-            title: "Success",
-            description: "Task created successfully",
-          });
-          onOpenChange(false);
-          setFormData({
-            title: '',
-            description: '',
-            priority: 'medium',
-            dueDate: '',
-          });
-        } catch (err) {
-          console.error('Failed to publish action:', err);
-          toast({
-            title: "Error",
-            description: "Failed to publish task to relay",
-            variant: "destructive",
-          });
-        }
+        onOpenChange(false);
+        setFormData({
+          title: '',
+          description: '',
+          priority: 'medium',
+          dueDate: '',
+        });
       },
       onError: (err) => {
         console.error('Failed to create action:', err);

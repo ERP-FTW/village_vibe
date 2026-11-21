@@ -13,6 +13,26 @@ import { useQuery } from "@tanstack/react-query";
 import { COORDINATION_KINDS } from "@/hooks/useEventCoordination";
 import type { NostrEvent } from "@nostrify/nostrify";
 
+interface DebugQuery {
+  name: string;
+  filter?: import("@nostrify/nostrify").NostrFilter;
+  error?: string;
+  count?: number;
+  kind?: number;
+  events?: {
+    id: string;
+    kind: number;
+    pubkey: string;
+    dTag?: string;
+    title?: string;
+    created: string;
+    status?: string;
+    eventRef?: string;
+    tags?: string[][];
+    allTags?: string[][];
+  }[];
+}
+
 interface DebugCoordinationDialogProps {
   event: NostrEvent;
   children?: React.ReactNode;
@@ -29,15 +49,15 @@ export function DebugCoordinationDialog({ event, children }: DebugCoordinationDi
     queryKey: ['debug-coordination', event.id, isOpen],
     enabled: isOpen,
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
-      const results: any = {
+      const { signal } = c;
+      const results = {
         timestamp: new Date().toISOString(),
         eventId: event.id,
         eventKind: event.kind,
         eventPubkey: event.pubkey,
         eventDTag: event.tags.find(([n]) => n === 'd')?.[1],
         userPubkey: user?.pubkey,
-        queries: [],
+        queries: [] as DebugQuery[],
       };
 
       // Query all coordination kinds
@@ -127,7 +147,7 @@ export function DebugCoordinationDialog({ event, children }: DebugCoordinationDi
     });
   };
 
-  const totalObjects = debugData?.queries.reduce((sum: number, q: any) => 
+  const totalObjects = debugData?.queries.reduce((sum: number, q) =>
     sum + (q.count || 0), 0) || 0;
 
   return (
@@ -208,13 +228,13 @@ export function DebugCoordinationDialog({ event, children }: DebugCoordinationDi
             </div>
           ) : (
             <div className="space-y-4">
-              {debugData?.queries.map((query: any, idx: number) => (
+              {debugData?.queries.map((query, idx: number) => (
                 <Card key={idx}>
                   <CardHeader>
                     <CardTitle className="text-sm flex items-center gap-2">
                       {query.error ? (
                         <XCircle className="h-4 w-4 text-destructive" />
-                      ) : query.count > 0 ? (
+                      ) : (query.count ?? 0) > 0 ? (
                         <CheckCircle className="h-4 w-4 text-green-500" />
                       ) : (
                         <AlertCircle className="h-4 w-4 text-yellow-500" />
@@ -250,7 +270,7 @@ export function DebugCoordinationDialog({ event, children }: DebugCoordinationDi
                           Sample Events ({query.events.length} of {query.count}):
                         </p>
                         <div className="space-y-2">
-                          {query.events.map((event: any, i: number) => (
+                          {query.events.map((event, i: number) => (
                             <div key={i} className="bg-muted p-2 rounded text-xs font-mono">
                               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                                 <div><span className="text-muted-foreground">ID:</span> {event.id}</div>

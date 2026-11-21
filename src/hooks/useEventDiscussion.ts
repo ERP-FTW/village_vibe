@@ -8,7 +8,7 @@ export function useEventDiscussion(event: NostrEvent, limit?: number) {
   return useQuery({
     queryKey: ['event-discussion', event.id, limit],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Get the event identifier for addressable events
       const d = event.tags.find(([name]) => name === 'd')?.[1] ?? '';

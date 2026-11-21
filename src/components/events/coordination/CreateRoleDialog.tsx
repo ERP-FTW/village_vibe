@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useCreateRole } from "@/hooks/useEventCoordination";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +17,6 @@ interface CreateRoleDialogProps {
 
 export function CreateRoleDialog({ event, open, onOpenChange }: CreateRoleDialogProps) {
   const { mutate: createRole, isPending: isCreating } = useCreateRole();
-  const { mutateAsync: publish } = useNostrPublish();
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -72,41 +70,20 @@ export function CreateRoleDialog({ event, open, onOpenChange }: CreateRoleDialog
       timeEnd: formData.timeEnd ? new Date(formData.timeEnd).getTime() / 1000 : undefined,
       requirements: formData.requirements.trim() || undefined,
     }, {
-      onSuccess: async (result) => {
-        console.log('✅ Role data created:', {
-          roleId: result.roleId,
-          kind: result.eventData.kind,
-          tags: result.eventData.tags,
+      onSuccess: () => {
+        toast({
+          title: "Success",
+          description: "Role created successfully",
         });
-
-        try {
-          console.log('📤 Publishing role to Nostr...');
-          const published = await publish(result.eventData);
-          console.log('✅ Role published successfully:', {
-            id: published.id,
-            roleId: result.roleId,
-          });
-          toast({
-            title: "Success",
-            description: "Role created successfully",
-          });
-          onOpenChange(false);
-          setFormData({
-            title: '',
-            description: '',
-            slots: '1',
-            timeStart: '',
-            timeEnd: '',
-            requirements: '',
-          });
-        } catch (err) {
-          console.error('Failed to publish role:', err);
-          toast({
-            title: "Error",
-            description: "Failed to publish role to relay",
-            variant: "destructive",
-          });
-        }
+        onOpenChange(false);
+        setFormData({
+          title: '',
+          description: '',
+          slots: '1',
+          timeStart: '',
+          timeEnd: '',
+          requirements: '',
+        });
       },
       onError: (err) => {
         console.error('Failed to create role:', err);

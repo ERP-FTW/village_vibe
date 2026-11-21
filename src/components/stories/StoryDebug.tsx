@@ -22,7 +22,7 @@ export function StoryDebug({ tribeId }: StoryDebugProps) {
   const { data: storiesByTribe, isLoading: storiesByTribeLoading } = useQuery({
     queryKey: ['debug-stories-by-tribe', dTag],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
       return await nostr.query([{
         kinds: [30023],
         '#tribe': [dTag],
@@ -34,7 +34,7 @@ export function StoryDebug({ tribeId }: StoryDebugProps) {
   const { data: storiesByAuthor, isLoading: storiesByAuthorLoading } = useQuery({
     queryKey: ['debug-stories-by-author', pubkey],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
       return await nostr.query([{
         kinds: [30023],
         authors: [pubkey],
@@ -46,7 +46,7 @@ export function StoryDebug({ tribeId }: StoryDebugProps) {
   const { data: recentEvents, isLoading: recentEventsLoading } = useQuery({
     queryKey: ['debug-recent-events', pubkey],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
       return await nostr.query([{
         authors: [pubkey],
         limit: 5,
@@ -57,7 +57,7 @@ export function StoryDebug({ tribeId }: StoryDebugProps) {
   const { data: allStories, isLoading: allStoriesLoading } = useQuery({
     queryKey: ['debug-all-stories', pubkey],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
       return await nostr.query([{
         kinds: [30023],
         authors: [pubkey],

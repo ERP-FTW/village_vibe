@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useCreateOutcome, type OutcomeType } from "@/hooks/useEventCoordination";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
 import { useUploadFile } from "@/hooks/useUploadFile";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/useToast";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 interface CreateOutcomeDialogProps {
   event: NostrEvent;
@@ -27,7 +26,6 @@ const OUTCOME_TYPES: { value: OutcomeType; label: string }[] = [
 
 export function CreateOutcomeDialog({ event, open, onOpenChange }: CreateOutcomeDialogProps) {
   const { mutate: createOutcome, isPending: isCreating } = useCreateOutcome();
-  const { mutateAsync: publish } = useNostrPublish();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
   const { toast } = useToast();
 
@@ -104,41 +102,20 @@ export function CreateOutcomeDialog({ event, open, onOpenChange }: CreateOutcome
       unit: formData.unit.trim() || undefined,
       mediaUrl: formData.mediaUrl || undefined,
     }, {
-      onSuccess: async (result) => {
-        console.log('✅ Outcome data created:', {
-          outcomeId: result.outcomeId,
-          kind: result.eventData.kind,
-          tags: result.eventData.tags,
+      onSuccess: () => {
+        toast({
+          title: "Success",
+          description: "Outcome recorded successfully",
         });
-
-        try {
-          console.log('📤 Publishing outcome to Nostr...');
-          const published = await publish(result.eventData);
-          console.log('✅ Outcome published successfully:', {
-            id: published.id,
-            outcomeId: result.outcomeId,
-          });
-          toast({
-            title: "Success",
-            description: "Outcome recorded successfully",
-          });
-          onOpenChange(false);
-          setFormData({
-            type: 'metric',
-            title: '',
-            content: '',
-            value: '',
-            unit: '',
-            mediaUrl: '',
-          });
-        } catch (err) {
-          console.error('Failed to publish outcome:', err);
-          toast({
-            title: "Error",
-            description: "Failed to publish outcome to relay",
-            variant: "destructive",
-          });
-        }
+        onOpenChange(false);
+        setFormData({
+          type: 'metric',
+          title: '',
+          content: '',
+          value: '',
+          unit: '',
+          mediaUrl: '',
+        });
       },
       onError: (err) => {
         console.error('Failed to create outcome:', err);

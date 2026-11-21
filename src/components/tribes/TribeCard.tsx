@@ -55,7 +55,7 @@ export function TribeCard({ tribe, requestStatus }: TribeCardProps) {
   const prefetchTribe = () => {
     queryClient.prefetchQuery({
       queryKey: ['tribe', tribeId],
-      queryFn: async () => {
+      queryFn: async ({ signal }) => {
         const [pubkey, d] = tribeId.split(':');
         const events = await nostr.query([
           {
@@ -64,7 +64,7 @@ export function TribeCard({ tribe, requestStatus }: TribeCardProps) {
             '#d': [d],
             limit: 1,
           }
-        ], { signal: AbortSignal.timeout(10000) });
+        ], { signal });
         return events[0] || null;
       },
       staleTime: 5 * 60 * 1000,

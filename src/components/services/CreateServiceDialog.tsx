@@ -33,7 +33,6 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useCreateService, SERVICE_CATEGORIES, type ServiceType, type ServiceCategory } from '@/hooks/useServices';
-import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useToast } from '@/hooks/useToast';
 import { Plus, X } from 'lucide-react';
 
@@ -63,10 +62,8 @@ interface CreateServiceDialogProps {
 
 export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }: CreateServiceDialogProps) {
   const { user } = useCurrentUser();
-  const { mutate: createService, isPending: isCreating } = useCreateService();
-  const { mutate: publishEvent, isPending: isPublishing } = useNostrPublish();
+  const { mutate: createService, isPending } = useCreateService();
   const { toast } = useToast();
-  const isPending = isCreating || isPublishing;
   const [open, setOpen] = useState(false);
   const [selectedVillages, setSelectedVillages] = useState<string[]>([]);
   const [newVillage, setNewVillage] = useState('');
@@ -117,28 +114,15 @@ export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }
     };
 
     createService(serviceData, {
-      onSuccess: (result) => {
-        // Publish the event to Nostr
-        publishEvent(result.eventData, {
-          onSuccess: () => {
-            toast({
-              title: 'Service created',
-              description: `Your ${data.type} has been posted to the community.`,
-            });
-
-            setOpen(false);
-            form.reset();
-            setSelectedVillages([]);
-          },
-          onError: (error) => {
-            console.error('Service publishing error:', error);
-            toast({
-              title: 'Publishing Error',
-              description: 'Failed to publish service to Nostr. Please try again.',
-              variant: 'destructive',
-            });
-          },
+      onSuccess: () => {
+        toast({
+          title: 'Service created',
+          description: `Your ${data.type} has been posted to the community.`,
         });
+
+        setOpen(false);
+        form.reset();
+        setSelectedVillages([]);
       },
       onError: (error) => {
         console.error('Service creation error:', error);

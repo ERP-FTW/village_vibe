@@ -18,7 +18,7 @@ export function useMyTribes(pubkey?: string) {
     queryFn: async (c) => {
       if (!pubkey) return [];
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Query for community definitions where user is a moderator/member
       const events = await nostr.query([
@@ -42,7 +42,7 @@ export function usePublicTribes() {
   return useQuery({
     queryKey: ['public-tribes'],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       const events = await nostr.query([
         {
@@ -63,64 +63,14 @@ export function useTribe(tribeId: string) {
 
   return useQuery({
     queryKey: ['tribe', tribeId],
-    retry: 5, // Retry 5 times for maximum reliability
-    retryDelay: (attemptIndex) => {
-      // Very aggressive retry schedule: 250ms, 500ms, 1s, 2s, 4s
-      return Math.min(250 * 2 ** attemptIndex, 10000);
-    },
-    staleTime: 30000, // Cache for 30 seconds only (very fresh data)
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
-    refetchOnMount: 'always', // Always refetch on mount, even if stale
-    refetchOnReconnect: true, // Refetch when reconnecting
-    networkMode: 'always', // Don't pause queries when offline
-    queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(15000)]); // Increased to 15s
-
-      // Parse tribe coordinates (format: pubkey:d-identifier)
-      const [pubkey, dTag] = tribeId.split(':');
-      if (!pubkey || !dTag) {
-        throw new Error('Invalid tribe ID format');
-      }
-
-      console.log('🔍 Querying tribe:', { tribeId, pubkey: pubkey.slice(0, 8), dTag });
-
-      try {
-        // Use a longer timeout for better reliability with slow relays
-        const extendedSignal = AbortSignal.any([c.signal, AbortSignal.timeout(20000)]); // 20s instead of 15s
-
-        const events = await nostr.query([
-          {
-            kinds: [34550],
-            authors: [pubkey],
-            '#d': [dTag],
-            limit: 10, // Increased limit in case relay returns multiple versions
-          }
-        ], { signal: extendedSignal });
-
-        console.log('📦 Tribe query result:', {
-          found: events.length > 0,
-          count: events.length,
-          eventId: events[0]?.id.slice(0, 8)
-        });
-
-        // If no tribe found, throw error to trigger retry
-        if (events.length === 0) {
-          console.warn('⚠️ Tribe not found on any relay, will retry');
-          throw new Error(`Tribe not found: ${tribeId}`);
-        }
-
-        // If multiple versions found, return the newest one
-        if (events.length > 1) {
-          events.sort((a, b) => b.created_at - a.created_at);
-          console.log('📌 Multiple tribe versions found, using newest:', events[0].created_at);
-        }
-
-        console.log('✅ Tribe found successfully');
-        return events[0];
-      } catch (err) {
-        console.error('❌ Tribe query error:', err);
-        throw err;
-      }
+    queryFn: async ({ signal }) => {
+      const [pubkey, ...parts] = tribeId.split(':');
+      const identifier = parts.join(':');
+      if (!pubkey || !identifier) return null;
+      const [tribe] = await nostr.query([{
+        kinds: [34550], authors: [pubkey], '#d': [identifier], limit: 1,
+      }], { signal });
+      return tribe ?? null;
     },
   });
 }
@@ -132,7 +82,7 @@ export function useTribeJoinRequests(tribeId: string, userPubkey?: string) {
   return useQuery({
     queryKey: ['tribe-join-requests', tribeId, userPubkey],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       const filter: {
         kinds: number[];
@@ -184,7 +134,7 @@ export function useTribeMemberCount(tribeId: string) {
     queryFn: async (c) => {
       if (!tribeId) return 0;
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Parse tribe coordinates (format: pubkey:d-identifier)
       const [pubkey, dTag] = tribeId.split(':');
@@ -234,7 +184,7 @@ export function useTribeName(tribeTag?: string) {
     queryFn: async (c) => {
       if (!tribeTag) return null;
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Query for community definitions with this d tag
       const events = await nostr.query([
@@ -285,7 +235,7 @@ export function useTribesCardStatuses(tribeIds: string[], userPubkey?: string) {
 
       if (!userPubkey || tribeIds.length === 0) return result;
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(8000)]);
+      const { signal } = c;
 
       // One request for both join requests (9021) and rejections (9022)
       const events = await nostr.query(

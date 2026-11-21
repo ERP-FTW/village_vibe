@@ -15,7 +15,7 @@ interface EventDiscussionFormProps {
 
 export function EventDiscussionForm({ event }: EventDiscussionFormProps) {
   const { user } = useCurrentUser();
-  const { mutate: createEvent, isPending: isSubmitting } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isSubmitting } = useNostrPublish();
   const { toast } = useToast();
   const [content, setContent] = useState("");
 
@@ -63,7 +63,7 @@ export function EventDiscussionForm({ event }: EventDiscussionFormProps) {
       const eventTitle = event.tags.find(([name]) => name === 'title')?.[1] || 'event';
       tags.push(['alt', `Discussion about ${eventTitle}`]);
 
-      createEvent({
+      await createEvent({
         kind: 1, // Regular note for maximum compatibility
         content: content.trim(),
         tags,

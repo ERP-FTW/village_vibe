@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useCreateItem } from "@/hooks/useEventCoordination";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +28,6 @@ const ITEM_CATEGORIES = [
 
 export function CreateItemDialog({ event, open, onOpenChange }: CreateItemDialogProps) {
   const { mutate: createItem, isPending: isCreating } = useCreateItem();
-  const { mutateAsync: publish } = useNostrPublish();
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -81,40 +79,19 @@ export function CreateItemDialog({ event, open, onOpenChange }: CreateItemDialog
       category: formData.category || undefined,
       unit: formData.unit.trim() || undefined,
     }, {
-      onSuccess: async (result) => {
-        console.log('✅ Item data created:', {
-          itemId: result.itemId,
-          kind: result.eventData.kind,
-          tags: result.eventData.tags,
+      onSuccess: () => {
+        toast({
+          title: "Success",
+          description: "Item created successfully",
         });
-
-        try {
-          console.log('📤 Publishing item to Nostr...');
-          const published = await publish(result.eventData);
-          console.log('✅ Item published successfully:', {
-            id: published.id,
-            itemId: result.itemId,
-          });
-          toast({
-            title: "Success",
-            description: "Item created successfully",
-          });
-          onOpenChange(false);
-          setFormData({
-            title: '',
-            description: '',
-            quantity: '1',
-            category: '',
-            unit: '',
-          });
-        } catch (err) {
-          console.error('Failed to publish item:', err);
-          toast({
-            title: "Error",
-            description: "Failed to publish item to relay",
-            variant: "destructive",
-          });
-        }
+        onOpenChange(false);
+        setFormData({
+          title: '',
+          description: '',
+          quantity: '1',
+          category: '',
+          unit: '',
+        });
       },
       onError: (err) => {
         console.error('Failed to create item:', err);

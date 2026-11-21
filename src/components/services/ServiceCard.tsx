@@ -1,3 +1,4 @@
+import { useToast } from '@/hooks/useToast';
 
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,6 @@ import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useUserBadgeAwards } from '@/hooks/useBadges';
 import { useCreateServiceMatch } from '@/hooks/useServices';
-import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useTribe } from '@/hooks/useTribes';
 import { extractServiceData, formatDistance, calculateDistance } from '@/hooks/useServices';
 import { genUserName } from '@/lib/genUserName';
@@ -41,8 +41,8 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
   const { user } = useCurrentUser();
   const author = useAuthor(event.pubkey);
   const { data: badges } = useUserBadgeAwards(event.pubkey);
-  const { mutate: createMatch } = useCreateServiceMatch();
-  const { mutate: publishEvent } = useNostrPublish();
+  const { toast } = useToast();
+  const { mutate: createMatch, isPending: isMatching } = useCreateServiceMatch();
 
   // Check if user is admin/moderator of this tribe
   const { data: tribe } = useTribe(tribeId || '');
@@ -81,9 +81,8 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
       type: isOffer ? 'request_to_offer' : 'offer_to_request',
       message: isOffer ? 'I need this service' : 'I can help with this',
     }, {
-      onSuccess: (result) => {
-        publishEvent(result.eventData);
-      },
+      onSuccess: () => toast({ title: 'Service match published' }),
+      onError: () => toast({ title: 'Could not publish service match', variant: 'destructive' }),
     });
   };
 
@@ -231,6 +230,7 @@ export function ServiceCard({ event, userLocation, className, tribeId, showModer
               <Button
                 size="sm"
                 onClick={handleMatch}
+                disabled={isMatching}
                 className="flex items-center gap-1"
               >
                 {isOffer ? (

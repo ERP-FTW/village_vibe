@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { useNostr } from "@nostrify/react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUploadFile } from "@/hooks/useUploadFile";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
 import { useCreateEnhancedEvent, useSendPrivateEventDetails, type EventType, type EventVisibility, getEventTypeInfo, EVENT_TYPES } from "@/hooks/useEvents";
 import { usePublicTribes } from "@/hooks/useTribes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -59,13 +57,11 @@ interface EventFormData {
 }
 
 export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps) {
-  const { nostr } = useNostr();
   const { user } = useCurrentUser();
   usePublicTribes(); // Keep hook active for potential future use
-  const { mutate: createEnhancedEvent, isPending: isCreating } = useCreateEnhancedEvent();
-  const { mutate: sendPrivateDetails } = useSendPrivateEventDetails();
+  const { mutateAsync: createEnhancedEvent, isPending: isCreating } = useCreateEnhancedEvent();
+  const { mutateAsync: sendPrivateDetails, isPending: isSendingInvites } = useSendPrivateEventDetails();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
-  const { mutateAsync: publishEventAsync } = useNostrPublish();
   const { toast } = useToast();
 
   const [open, setOpen] = useState(false);
@@ -240,7 +236,7 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
       });
 
       // Create the enhanced event
-      createEnhancedEvent({
+      const result = await createEnhancedEvent({
         tribe: tribeSlug,
         title: formData.title.trim(),
         content: formData.description.trim(),
@@ -256,170 +252,61 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
         invitees: formData.invitees,
         privateDetails: formData.privateDetails.trim(),
         typeSpecificData,
-      }, {
-        onSuccess: async (result) => {
-          console.log('✅ Event data created:', {
-            dTag: result.dTag,
-            eventId: result.eventId,
-            kind: result.eventData.kind,
-            tags: result.eventData.tags,
-            content: result.eventData.content,
-          });
-
-          // Publish the event to Nostr
-          console.log('📤 Publishing event to Nostr relay...');
-          try {
-            const publishedEvent = await publishEventAsync(result.eventData);
-            console.log('✅ Event published successfully to relay!', {
-              id: publishedEvent.id,
-              pubkey: publishedEvent.pubkey,
-              kind: publishedEvent.kind,
-              created_at: publishedEvent.created_at,
-              tags: publishedEvent.tags,
-            });
-
-            // Log the specific tags for debugging
-            console.log('📋 Published event tags in detail:');
-            publishedEvent.tags.forEach((tag, i) => {
-              console.log(`  [${i}] ${tag[0]} = ${tag[1]}`);
-            });
-
-            // Create detailed debug info
-            const debugInfo = {
-              eventId: publishedEvent.id,
-              eventKind: publishedEvent.kind,
-              pubkey: publishedEvent.pubkey.slice(0, 8) + '...',
-              dTag: result.dTag,
-              tribeTag: publishedEvent.tags.find(([n]) => n === 'tribe')?.[1],
-              title: formData.title.trim(),
-              timestamp: publishedEvent.created_at,
-              tags: publishedEvent.tags,
-            };
-
-            // Store in sessionStorage for debug tool
-            sessionStorage.setItem('lastCreatedEvent', JSON.stringify(debugInfo));
-
-            // Send private details via DM if this is a private event
-            if (formData.visibility === 'private' && formData.sendDMs && formData.invitees.length > 0) {
-              const privateDetailsText = formData.privateDetails.trim() || 'See you there!';
-              const exactLocationText = formData.exactLocation.trim() || formData.place.trim();
-
-              sendPrivateDetails({
-                eventId: result.eventId,
-                eventTitle: formData.title.trim(),
-                invitees: formData.invitees,
-                privateDetails: privateDetailsText,
-                exactLocation: exactLocationText,
-                organizer: user.pubkey,
-              });
-            }
-
-            // Show success toast with technical details
-            console.log('🎊 Showing success toast...');
-            toast({
-              title: "Event Published! 🎉",
-              description: (
-                <div className="space-y-2 text-xs">
-                  <p>Your {formData.etypes.map(t => getEventTypeInfo(t).label).join(' + ')} event is live!</p>
-                  <div className="bg-muted/50 p-2 rounded font-mono text-[10px] space-y-1">
-                    <div><strong>ID:</strong> {publishedEvent.id.slice(0, 16)}...</div>
-                    <div><strong>Kind:</strong> {publishedEvent.kind}</div>
-                    <div><strong>Tribe:</strong> {debugInfo.tribeTag}</div>
-                    <div><strong>dTag:</strong> {result.dTag}</div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(JSON.stringify(debugInfo, null, 2));
-                      toast({ title: "Copied!", description: "Event details copied to clipboard" });
-                    }}
-                    className="text-xs underline hover:text-foreground"
-                  >
-                    📋 Copy Debug Info
-                  </button>
-                </div>
-              ),
-              duration: 10000,
-            });
-
-            // Close dialog and reset form
-            console.log('🚪 Closing dialog and resetting form...');
-            setOpen(false);
-            setFormData({
-              title: '',
-              summary: '',
-              description: '',
-              place: '',
-              lat: 47.6062,
-              lon: -122.3321,
-              image: '',
-              date: '',
-              time: '',
-              duration: '60',
-              etypes: [],
-              visibility: 'public',
-              villages: [],
-              invitees: [],
-              privateDetails: '',
-              exactLocation: '',
-              sendDMs: true,
-              enableZaps: false,
-              enableComments: true,
-              autoPromptStory: true,
-              foodSlots: [],
-              dietNotes: '',
-              tasks: [],
-              toolsNeeded: '',
-              instructors: [],
-              materials: '',
-              gameKind: '',
-              teamsMode: 'auto',
-              occasion: '',
-            });
-
-            // Immediately query to verify the relay stored it
-            console.log('🔎 Querying relay to verify event was stored...');
-            setTimeout(async () => {
-              try {
-                const verifyEvents = await nostr.query([{
-                  kinds: [36959],
-                  ids: [publishedEvent.id],
-                }], { signal: AbortSignal.timeout(2000) });
-                console.log('🔍 Verification query by ID result:', verifyEvents.length > 0 ? 'FOUND ✅' : 'NOT FOUND ❌');
-                if (verifyEvents.length > 0) {
-                  console.log('📄 Found event by ID:', verifyEvents[0]);
-                }
-
-                // Also try querying by author
-                const tribeTag = publishedEvent.tags.find(([n]) => n === 'tribe')?.[1];
-                const verifyByAuthor = await nostr.query([{
-                  kinds: [36959],
-                  authors: [publishedEvent.pubkey],
-                  limit: 10,
-                }], { signal: AbortSignal.timeout(2000) });
-                console.log('🔍 Verification query by author result:', verifyByAuthor.length, 'events');
-                console.log('🏷️ Tribe tag in published event:', tribeTag);
-              } catch (err) {
-                console.error('❌ Verification query failed:', err);
-              }
-            }, 500);
-          } catch (publishError) {
-            console.error('❌ Failed to publish event to relay:', publishError);
-            toast({
-              title: "Publishing Error",
-              description: "Event was created but failed to publish to relay. Please try again.",
-              variant: "destructive",
-            });
-            return; // Don't continue if publish fails
-          }
-        },
-        onError: (error) => {
-          console.error('Error creating event:', error);
-          toast({
-            title: "Error",
-            description: "Failed to create event. Please try again.",
-            variant: "destructive",
-          });
-        }
+      });
+      const published = result.eventData;
+      try {
+        sessionStorage.setItem('lastCreatedEvent', JSON.stringify({
+          eventId: published.id, eventKind: published.kind, pubkey: published.pubkey,
+          dTag: result.dTag, tribeTag: tribeSlug, title: formData.title.trim(),
+          timestamp: published.created_at, tags: published.tags,
+        }));
+      } catch {
+        // The relay already accepted the event even if browser storage is unavailable.
+      }
+      let failed = 0;
+      if (formData.visibility === 'private' && formData.sendDMs && formData.invitees.length) {
+        failed = await sendPrivateDetails({
+          eventId: result.eventId, eventTitle: formData.title.trim(), invitees: formData.invitees,
+          privateDetails: formData.privateDetails.trim() || 'See you there!',
+          exactLocation: formData.exactLocation.trim() || formData.place.trim(), organizer: user.pubkey,
+        });
+      }
+      toast({
+        title: 'Event published',
+        description: failed ? `Private details could not be delivered to ${failed} invitee(s).` : 'Your event has been published.',
+        variant: failed ? 'destructive' : 'default',
+      });
+      setOpen(false);
+      setFormData({
+        title: '',
+        summary: '',
+        description: '',
+        place: '',
+        lat: 47.6062,
+        lon: -122.3321,
+        image: '',
+        date: '',
+        time: '',
+        duration: '60',
+        etypes: [],
+        visibility: 'public',
+        villages: [],
+        invitees: [],
+        privateDetails: '',
+        exactLocation: '',
+        sendDMs: true,
+        enableZaps: false,
+        enableComments: true,
+        autoPromptStory: true,
+        foodSlots: [],
+        dietNotes: '',
+        tasks: [],
+        toolsNeeded: '',
+        instructors: [],
+        materials: '',
+        gameKind: '',
+        teamsMode: 'auto',
+        occasion: '',
       });
     } catch (error) {
       console.error('❌ CATCH BLOCK - Error creating event:', error);
@@ -1026,7 +913,7 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
             </Button>
             <Button
               type="submit"
-              disabled={isCreating || isUploading}
+              disabled={isCreating || isSendingInvites || isUploading}
               className="flex-1"
               onClick={() => console.log('🔘 Create Event button clicked')}
             >

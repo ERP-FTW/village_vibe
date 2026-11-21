@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import {
-  historyComplete, MAX_RECENT_PAGES, PAGE_SIZE, RANDOMIZED_WINDOW_S, readOlderWraps, readRecentWraps,
+  historyComplete, MAX_RECENT_PAGES, mergeCursors, PAGE_SIZE, RANDOMIZED_WINDOW_S, readOlderWraps, readRecentWraps,
   type InboxQueryable,
 } from './inboxPaging';
 
@@ -138,5 +138,36 @@ describe('reading the inbox', () => {
     });
 
     await expect(readRecentWraps(nostr, ME, ['A'], { now: NOW, signal: controller.signal })).rejects.toThrow('Left the page');
+  });
+
+  it('reads the whole recent window when given a larger page budget', async () => {
+    const store = series('a', PAGE_SIZE * 7, NOW - 10, 10);
+    const { nostr } = fakeRelays({ A: store });
+
+    const read = await readRecentWraps(nostr, ME, ['A'], { now: NOW, maxPages: MAX_RECENT_PAGES * 2 });
+    expect(read.wraps).toHaveLength(store.length);
+    expect(historyComplete(read.cursors)).toBe(true);
+  });
+});
+
+describe('combining a refresh with older history read on request', () => {
+  const done = { relay: 'A' };
+  it('keeps a gap the latest refresh left, even if older history was read to the end before', () => {
+    const merged = mergeCursors([{ relay: 'A', nextUntil: NOW - 5000, gap: 'page-limit' }], [done]);
+    expect(merged[0]).toMatchObject({ gap: 'page-limit', nextUntil: NOW - 5000 });
+    expect(historyComplete(merged)).toBe(false);
+  });
+
+  it('shows a relay failing now as failing', () => {
+    expect(mergeCursors([{ relay: 'A', gap: 'error', error: 'down' }], [done])[0].gap).toBe('error');
+  });
+
+  it('uses the older-history cursor once the refresh read its window in full', () => {
+    expect(mergeCursors([{ relay: 'A', nextUntil: SINCE - 1 }], [{ relay: 'A', nextUntil: SINCE - 9000 }])[0].nextUntil).toBe(SINCE - 9000);
+    expect(historyComplete(mergeCursors([{ relay: 'A', nextUntil: SINCE - 1 }], [done]))).toBe(true);
+  });
+
+  it('keeps a crowded-timestamp gap the refresh found', () => {
+    expect(mergeCursors([{ relay: 'A', nextUntil: SINCE - 1, gap: 'same-timestamp' }], [done])[0].gap).toBe('same-timestamp');
   });
 });

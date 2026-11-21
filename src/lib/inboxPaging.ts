@@ -8,8 +8,10 @@ export interface InboxQueryable {
 /** NIP-59 backdates wrap timestamps by up to two days; the recent window is read in full. */
 export const RANDOMIZED_WINDOW_S = 3 * 24 * 60 * 60;
 export const PAGE_SIZE = 300;
-/** Pages read per relay on each refresh of the recent window. */
+/** Pages read per relay on each refresh of the recent window (raised on request). */
 export const MAX_RECENT_PAGES = 5;
+/** Upper bound for that budget, however often more is requested. */
+export const RECENT_PAGES_CAP = 25;
 
 /** Where reading a relay's history stands. */
 export interface RelayCursor {
@@ -82,9 +84,10 @@ function failure(cursor: RelayCursor, error: unknown, signal?: AbortSignal): Rel
  */
 export async function readRecentWraps(
   nostr: InboxQueryable, pubkey: string, relays: string[],
-  options: { signal?: AbortSignal; now?: number } = {},
+  options: { signal?: AbortSignal; now?: number; maxPages?: number } = {},
 ): Promise<InboxRead> {
   const { signal } = options;
+  const maxPages = Math.min(options.maxPages ?? MAX_RECENT_PAGES, RECENT_PAGES_CAP);
   const since = (options.now ?? Math.floor(Date.now() / 1000)) - RANDOMIZED_WINDOW_S;
   const wraps = new Map<string, NostrEvent>();
 
@@ -94,7 +97,7 @@ export async function readRecentWraps(
     let windowRead = false;
     let until: number | undefined;
     try {
-      for (let page = 0; page < MAX_RECENT_PAGES; page++) {
+      for (let page = 0; page < maxPages; page++) {
         const result = await readPage(nostr, pubkey, relay, seen, { since, until }, signal);
         result.fresh.forEach(wrap => wraps.set(wrap.id, wrap));
         if (result.skippedTimestamp) cursor = { ...cursor, gap: 'same-timestamp' };
@@ -144,6 +147,23 @@ export async function readOlderWraps(
   const seen = new Set(known);
   const next = await Promise.all(cursors.map(cursor => readOlder(nostr, pubkey, cursor, wraps, seen, signal)));
   return { wraps: [...wraps.values()], cursors: next };
+}
+
+/**
+ * The status to show per relay, combining the latest refresh of the recent window with any
+ * older history loaded on request (which only ever extends beyond the window):
+ * - a relay failing now, or a window the refresh couldn't read in full, is shown as is,
+ *   since wraps can still arrive backdated anywhere in the window;
+ * - otherwise the older-history cursor says how far back the relay has been read (keeping
+ *   a crowded-timestamp gap the refresh found).
+ */
+export function mergeCursors(recent: RelayCursor[], older?: RelayCursor[]): RelayCursor[] {
+  return recent.map(cursor => {
+    const stored = older?.find(o => o.relay === cursor.relay);
+    if (!stored || cursor.gap === 'error' || cursor.gap === 'page-limit') return cursor;
+    if (cursor.gap === 'same-timestamp' && !stored.gap) return { ...stored, gap: 'same-timestamp' };
+    return stored;
+  });
 }
 
 /** Plain-language notes on what may be missing, for display. */

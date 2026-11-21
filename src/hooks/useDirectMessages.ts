@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { inboxRelaysFrom, SignerUnavailableError, supportsNip17, unwrapDirectMessage, type Rumor } from '@/lib/nip17';
 import { readRelayUrls } from '@/lib/RelayPool';
-import { describeHistoryGaps, historyComplete, readOlderWraps, readRecentWraps, type RelayCursor } from '@/lib/inboxPaging';
+import { describeHistoryGaps, historyComplete, MAX_RECENT_PAGES, mergeCursors, readOlderWraps, readRecentWraps, RECENT_PAGES_CAP, type RelayCursor } from '@/lib/inboxPaging';
 import { useAppContext } from '@/hooks/useAppContext';
 
 export interface DecryptedMessage {
@@ -33,6 +33,13 @@ const SIGNER_RETRY_MS = 5 * 60 * 1000;
  * continue from are kept here.
  */
 const olderHistory = new Map<string, { wraps: Map<string, NostrEvent>; cursors: RelayCursor[] }>();
+/**
+ * Every wrap read for a viewer this session. Messages aren't withdrawn, so a refresh that
+ * can't reach some (or all) relays keeps showing what was already read instead of dropping it.
+ */
+const knownWraps = new Map<string, Map<string, NostrEvent>>();
+/** Per viewer: pages read per relay when refreshing the recent window (raised on request). */
+const recentPageBudget = new Map<string, number>();
 
 /** What the inbox could and couldn't read, for display. */
 export interface InboxHistory {
@@ -49,20 +56,13 @@ export interface GiftWrappedInbox {
   history: InboxHistory;
 }
 
-/** Status per relay: a current outage wins, otherwise the furthest-read cursor. */
-function currentCursors(recent: RelayCursor[], older?: RelayCursor[]): RelayCursor[] {
-  return recent.map(cursor => {
-    if (cursor.gap === 'error') return cursor;
-    return older?.find(o => o.relay === cursor.relay) ?? cursor;
-  });
-}
-
-function inboxHistory(cursors: RelayCursor[], inboxListError?: string): InboxHistory {
+function inboxHistory(cursors: RelayCursor[], inboxListError?: string, budget = MAX_RECENT_PAGES): InboxHistory {
   const notes = describeHistoryGaps(cursors);
   if (inboxListError) notes.unshift(`Couldn't look up your inbox relays (${inboxListError}); messages delivered only there may be missing.`);
+  const deeper = (cursor: RelayCursor) => cursor.gap === 'page-limit' ? budget < RECENT_PAGES_CAP : cursor.nextUntil !== undefined;
   return {
     complete: historyComplete(cursors) && !inboxListError,
-    canLoadOlder: cursors.some(cursor => cursor.nextUntil !== undefined || cursor.gap === 'error'),
+    canLoadOlder: cursors.some(cursor => cursor.gap === 'error' || deeper(cursor)),
     notes,
   };
 }
@@ -117,11 +117,15 @@ export function useGiftWrappedInbox() {
         ...(inboxRelaysFrom(lists).get(user.pubkey) ?? []),
         ...readRelayUrls(config.relayUrl, presetRelays),
       ])];
-      const recent = await readRecentWraps(nostr, user.pubkey, relays, { signal });
+      const budget = recentPageBudget.get(user.pubkey) ?? MAX_RECENT_PAGES;
+      const recent = await readRecentWraps(nostr, user.pubkey, relays, { signal, maxPages: budget });
       const older = olderHistory.get(user.pubkey);
-      const cursors = currentCursors(recent.cursors, older?.cursors);
-      const rumors = await openWraps(signer, user.pubkey, [...recent.wraps, ...(older?.wraps.values() ?? [])]);
-      return { rumors, cursors, history: inboxHistory(cursors, inboxListError) };
+      const cursors = mergeCursors(recent.cursors, older?.cursors);
+      const known = knownWraps.get(user.pubkey) ?? new Map<string, NostrEvent>();
+      for (const wrap of [...recent.wraps, ...(older?.wraps.values() ?? [])]) known.set(wrap.id, wrap);
+      knownWraps.set(user.pubkey, known);
+      const rumors = await openWraps(signer, user.pubkey, [...known.values()]);
+      return { rumors, cursors, history: inboxHistory(cursors, inboxListError, budget) };
     },
   });
 }
@@ -134,10 +138,20 @@ export function useLoadOlderMessages() {
   return useMutation({
     mutationFn: async (cursors: RelayCursor[]) => {
       if (!user) return;
+      // A recent window that wasn't read in full: read more of it on each refresh (bounded)
+      if (cursors.some(cursor => cursor.gap === 'page-limit')) {
+        const budget = recentPageBudget.get(user.pubkey) ?? MAX_RECENT_PAGES;
+        recentPageBudget.set(user.pubkey, Math.min(budget + MAX_RECENT_PAGES, RECENT_PAGES_CAP));
+      }
+      // Older history beyond the window, for relays whose window is complete
+      const beyond = cursors.filter(cursor => cursor.gap !== 'page-limit');
       const stored = olderHistory.get(user.pubkey) ?? { wraps: new Map<string, NostrEvent>(), cursors: [] };
-      const read = await readOlderWraps(nostr, user.pubkey, cursors, stored.wraps.keys());
+      const read = await readOlderWraps(nostr, user.pubkey, beyond, stored.wraps.keys());
       read.wraps.forEach(wrap => stored.wraps.set(wrap.id, wrap));
-      olderHistory.set(user.pubkey, { wraps: stored.wraps, cursors: read.cursors });
+      olderHistory.set(user.pubkey, {
+        wraps: stored.wraps,
+        cursors: [...stored.cursors.filter(c => !read.cursors.some(r => r.relay === c.relay)), ...read.cursors],
+      });
     },
     // Also re-reads the recent window, which retries relays that failed
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['nip17-inbox'] }),

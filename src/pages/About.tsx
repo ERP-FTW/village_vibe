@@ -533,7 +533,7 @@ export function AboutPage() {
               <h4 className="font-semibold text-foreground mb-2">Key Features</h4>
               <ul className="list-disc list-inside space-y-1 ml-4 text-xs">
                 <li>Decentralized data storage on Nostr relays</li>
-                <li>End-to-end encrypted messaging</li>
+                <li>Encrypted direct messages (NIP-04)</li>
                 <li>QR code check-ins for event attendance</li>
                 <li>Real-time updates with optimistic UI</li>
                 <li>Relay switching for content discovery</li>

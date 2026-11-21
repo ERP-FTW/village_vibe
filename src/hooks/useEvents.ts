@@ -1,10 +1,13 @@
-import { useSendDirectMessage } from './useSendDirectMessage';
+import { useRetryDirectMessage, useSendDirectMessage } from './useSendDirectMessage';
+import { retryInvitations, sendInvitations, type InvitationOutcome } from '@/lib/invitations';
+import { lookupInboxesCached } from '@/lib/dmDelivery';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
 import { locationTags } from '@/lib/location';
 import { villageList } from '@/lib/villages';
 import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { latestRSVPs } from '@/lib/rsvp';
+import { isCheckIn } from '@/lib/attendance';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -162,7 +165,7 @@ export function useEventRSVPs(eventId: string) {
   });
 }
 
-// Hook to get attendance verifications for an event
+// Hook to get self-reported check-ins for an event
 export function useEventAttendance(eventId: string) {
   const { nostr } = useNostr();
 
@@ -176,7 +179,7 @@ export function useEventAttendance(eventId: string) {
 
       const events = await nostr.query([
         {
-          kinds: [2073], // Custom attendance verification kind
+          kinds: [2073], // Self-reported check-ins
           '#a': [`31923:${pubkey}:${dTag}`, `36959:${pubkey}:${dTag}`],
           limit: 200,
         }
@@ -481,8 +484,11 @@ Organizer: ${data.organizer}
 The organizer shared these details with you in an encrypted message. The event listing itself is public; please don't repost these details.`;
 }
 
-// Hook to send private event details via DM
+export { invitationsComplete, type InvitationOutcome } from '@/lib/invitations';
+
+// Hook to send private event details via DM, reporting what reached whom
 export function useSendPrivateEventDetails() {
+  const { nostr } = useNostr();
   const { mutateAsync: send } = useSendDirectMessage();
   return useMutation({
     mutationFn: async (data: {
@@ -492,13 +498,21 @@ export function useSendPrivateEventDetails() {
       privateDetails: string;
       exactLocation?: string;
       organizer: string;
-    }) => {
-      const dmContent = buildPrivateDetailsMessage(data);
-      const sent = await Promise.allSettled([...new Set(data.invitees)].map(recipient =>
-        send({ recipient, message: dmContent })
-      ));
-      return sent.filter(outcome => outcome.status === 'rejected').length;
+    }): Promise<InvitationOutcome> => {
+      const message = buildPrivateDetailsMessage(data);
+      // One inbox lookup for the whole batch (every invitee and the organizer's own copies)
+      await lookupInboxesCached(nostr, [...new Set(data.invitees), data.organizer]);
+      return sendInvitations(send, data.eventId, data.invitees, message);
     },
+  });
+}
+
+// Retry only the invitations (or the organizer's copies) that didn't go through
+export function useRetryInvitations() {
+  const { mutateAsync: send } = useSendDirectMessage();
+  const { mutateAsync: retry } = useRetryDirectMessage();
+  return useMutation({
+    mutationFn: (outcome: InvitationOutcome): Promise<InvitationOutcome> => retryInvitations(outcome, send, retry),
   });
 }
 
@@ -641,17 +655,9 @@ export function validateEnhancedEvent(event: NostrEvent): boolean {
   return true;
 }
 
-// Validate attendance event structure
+// Validate attendance event structure (self-reported check-ins; see lib/attendance)
 export function validateAttendanceEvent(event: NostrEvent): boolean {
-  if (event.kind !== 2073) return false;
-
-  const aTag = event.tags.find(([name]) => name === 'a')?.[1];
-  const nonceTag = event.tags.find(([name]) => name === 'nonce')?.[1];
-  const verifiedAtTag = event.tags.find(([name]) => name === 'verified_at')?.[1];
-
-  if (!aTag || !nonceTag || !verifiedAtTag) return false;
-
-  return true;
+  return isCheckIn(event);
 }
 
 // Apply event filters

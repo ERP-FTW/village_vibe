@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useSendDirectMessage } from "@/hooks/useSendDirectMessage";
+import { deliveryStatusText } from "@/lib/dmDelivery";
 import { useToast } from "@/hooks/useToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -28,11 +29,20 @@ export function DMDialog({ recipientPubkey, recipientName, children }: DMDialogP
 
     if (isPending) return;
     try {
-      await sendMessage({ recipient: recipientPubkey, message: message.trim() });
+      const delivery = await sendMessage({ recipient: recipientPubkey, message: message.trim() });
+      const status = deliveryStatusText(delivery);
+
+      if (delivery.recipient.status === 'failed') {
+        // Keep the draft here; the conversation also shows the message with a Retry action
+        toast({ title: `Not delivered to ${recipientName}`, description: status.text, variant: "destructive" });
+        return;
+      }
 
       toast({
-        title: "📨 Message Sent!",
-        description: `Your encrypted message was sent to ${recipientName}`,
+        title: "📨 Message delivered",
+        description: delivery.senderCopy?.status === 'failed'
+          ? `${recipientName} received it. ${status.text} You can save your copy from the conversation.`
+          : `Your encrypted message was delivered to ${recipientName}.`,
       });
 
       setMessage("");

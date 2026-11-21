@@ -1,56 +1,92 @@
+import { useMemo } from 'react';
 import { useNostr } from '@nostrify/react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { NostrEvent } from '@nostrify/nostrify';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCurrentUser } from './useCurrentUser';
-import { useNostrPublish } from './useNostrPublish';
-import { inboxRelaysFrom, supportsNip17, wrapDirectMessage } from '@/lib/nip17';
+import {
+  deliverMissing, messageIdOf, newDelivery, prepareDirectMessage, type MessageDelivery,
+} from '@/lib/dmDelivery';
 
 /**
- * Send a direct message.
- *
- * With a NIP-44 capable signer this sends a NIP-17 gift-wrapped message (sender and timing
- * hidden from relays). Per NIP-17, each copy goes only to its owner's advertised inbox
- * relays (kind 10050) when they have any, and delivery means one of those relays accepted
- * it; users without an inbox list get the copy on the app's relays. The sender keeps a
- * copy in their own inbox. Signers without NIP-44 fall back to NIP-04 (kind 4).
+ * Messages sent in this page session, with their delivery state. Kept in memory only (the
+ * query cache), never persisted: it holds the signed events needed to retry the missing part
+ * of a delivery, and the plaintext so a sent message stays visible before relays return it.
+ */
+const outboxKey = (sender: string | undefined) => ['dm-outbox', sender] as const;
+
+function recordDelivery(queryClient: QueryClient, sender: string, delivery: MessageDelivery) {
+  const id = messageIdOf(delivery.prepared);
+  queryClient.setQueryData<MessageDelivery[]>(outboxKey(sender), (current = []) => [
+    ...current.filter(entry => messageIdOf(entry.prepared) !== id),
+    delivery,
+  ]);
+}
+
+function refreshMessages(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: ['nip17-inbox'] });
+  void queryClient.invalidateQueries({ queryKey: ['direct-messages'] });
+  void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+}
+
+const NO_DELIVERIES: MessageDelivery[] = [];
+
+/** This session's sent messages (optionally only those to `partner`); stable between renders. */
+export function useDmOutbox(partner?: string) {
+  const { user } = useCurrentUser();
+  const queryClient = useQueryClient();
+  const { data = NO_DELIVERIES } = useQuery({
+    queryKey: outboxKey(user?.pubkey),
+    // Local state, not fetched: a refetch (e.g. after switching relays) keeps what's there.
+    queryFn: () => queryClient.getQueryData<MessageDelivery[]>(outboxKey(user?.pubkey)) ?? NO_DELIVERIES,
+    enabled: !!user,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  return useMemo(
+    () => partner ? data.filter(entry => entry.prepared.recipient === partner) : data,
+    [data, partner],
+  );
+}
+
+/**
+ * Send a direct message. Resolves with what actually happened instead of throwing on a
+ * partial failure:
+ * - `recipient`: delivered (to their advertised NIP-17 inbox relays, or the app's relays when
+ *   they advertise none) or failed. If their inbox lookup fails, nothing is sent.
+ * - `senderCopy` (NIP-17): the copy that keeps the sender's own history, stored only after the
+ *   recipient has the message. Null for NIP-04, where one event serves both sides.
+ * Signers without NIP-44 fall back to NIP-04. It rejects only if the message couldn't be
+ * encrypted or signed.
  */
 export function useSendDirectMessage() {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
-  const { mutateAsync: publish } = useNostrPublish();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ recipient, message }: { recipient: string; message: string }) => {
+    mutationFn: async ({ recipient, message }: { recipient: string; message: string }): Promise<MessageDelivery> => {
       if (!user) throw new Error('You must be logged in to send messages.');
-      const signer = user.signer;
-
-      if (supportsNip17(signer)) {
-        const { recipientWrap, senderWrap } = await wrapDirectMessage(signer, user.pubkey, recipient, message);
-        const lists = await nostr.query(
-          [{ kinds: [10050], authors: [recipient, user.pubkey], limit: 2 }],
-          { signal: AbortSignal.timeout(4000) },
-        ).catch(() => [] as NostrEvent[]);
-        const inboxes = inboxRelaysFrom(lists);
-        const deliver = (wrap: NostrEvent, owner: string) => {
-          const relays = inboxes.get(owner);
-          return nostr.event(wrap, { signal: AbortSignal.timeout(6000), ...(relays?.length ? { relays } : {}) });
-        };
-        await deliver(recipientWrap, recipient);
-        // The sender's copy only affects this user's own history; don't fail the send over it.
-        await deliver(senderWrap, user.pubkey).catch(() => undefined);
-        return { protocol: 'nip17' as const };
-      }
-
-      if (!signer.nip04) throw new Error('Your signer does not support encrypted messages.');
-      const content = await signer.nip04.encrypt(recipient, message);
-      await publish({ kind: 4, content, tags: [['p', recipient]] });
-      return { protocol: 'nip04' as const };
+      const prepared = await prepareDirectMessage(user.signer, user.pubkey, recipient, message);
+      const delivery = await deliverMissing(nostr, newDelivery(prepared));
+      recordDelivery(queryClient, user.pubkey, delivery);
+      return delivery;
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['nip17-inbox'] });
-      void queryClient.invalidateQueries({ queryKey: ['direct-messages'] });
-      void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    onSettled: () => refreshMessages(queryClient),
+  });
+}
+
+/** Retry only the parts of a delivery that failed, with the same signed events. */
+export function useRetryDirectMessage() {
+  const { nostr } = useNostr();
+  const { user } = useCurrentUser();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (delivery: MessageDelivery): Promise<MessageDelivery> => {
+      if (!user) throw new Error('You must be logged in to send messages.');
+      const next = await deliverMissing(nostr, delivery);
+      recordDelivery(queryClient, user.pubkey, next);
+      return next;
     },
+    onSettled: () => refreshMessages(queryClient),
   });
 }

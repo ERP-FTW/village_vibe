@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/useToast";
 import { QrCode, Loader2, CheckCircle, Camera, X } from "lucide-react";
 import QrScanner from "qr-scanner";
+import { CHECK_IN_TRUST_NOTE, checkInTags } from '@/lib/attendance';
 
 interface AttendeeCheckInProps {
   event: NostrEvent;
@@ -160,28 +161,22 @@ export function AttendeeCheckIn({ event, eventId }: AttendeeCheckInProps) {
     }
 
     try {
-      const tags = [
-        ['a', `${event.kind}:${eventId}`], // Reference to event using its actual kind
-        ['e', event.id], // Reference to specific event revision
-        ['p', event.pubkey], // Event host pubkey
-        ['nonce', checkInCode.trim()], // 13-digit verification code
-        ['verified_at', Math.floor(Date.now() / 1000).toString()], // Current timestamp
-        ['alt', `Attendance verification for ${event.tags.find(([name]) => name === 'title')?.[1] || 'event'}`],
-      ];
-
-      if (location.trim()) {
-        tags.push(['location', location.trim()]);
-      }
+      const tags = checkInTags({
+        event,
+        coordinate: `${event.kind}:${eventId}`,
+        code: checkInCode.trim(),
+        location: location.trim() || undefined,
+      });
 
       await createEvent({
-        kind: 2073, // Custom attendance verification kind
+        kind: 2073, // Self-reported check-in
         content: note.trim() || `Checked in to ${event.tags.find(([name]) => name === 'title')?.[1] || 'event'}`,
         tags,
       });
 
       toast({
-        title: "🎉 Checked In Successfully!",
-        description: "Your check-in has been published.",
+        title: "🎉 Checked in",
+        description: "Your self-reported check-in was published.",
       });
 
       // Clear form
@@ -230,11 +225,11 @@ export function AttendeeCheckIn({ event, eventId }: AttendeeCheckInProps) {
             <div className="p-4 bg-muted rounded-lg">
               <h4 className="font-semibold mb-2">How to Check In:</h4>
               <ol className="text-sm space-y-1 list-decimal list-inside text-muted-foreground">
-                <li>Scan the QR code shown by the event host</li>
-                <li>Enter the 13-digit number below</li>
-                <li>Add optional location/note</li>
-                <li>Click "Check In" to verify your attendance</li>
+                <li>Scan the QR code shown by the event host, or type its 13-digit number</li>
+                <li>Add an optional location or note</li>
+                <li>Click "Check In" to publish your check-in (public, signed with your Nostr key)</li>
               </ol>
+              <p className="text-xs text-muted-foreground mt-2">{CHECK_IN_TRUST_NOTE}</p>
             </div>
 
             <div className="space-y-2">

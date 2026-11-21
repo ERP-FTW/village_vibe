@@ -493,16 +493,17 @@ Note that NIP-29 defines kind 9022 as a "leave request". Village Vibe's tribes a
 
 ## Event Check-ins (Kind 2073)
 
-Published by an attendee who entered the host's check-in code.
+Published by an attendee to say they checked in, usually after entering the 13-digit code shown on the host's screen.
 
 | Tag | Meaning |
 |---|---|
-| `["a", "<event-kind>:<host-pubkey>:<d>"]` | The event (36959 or 31923) |
+| `["a", "<event-kind>:<host-pubkey>:<d>"]` | The event (36959 or 31923). The only tag readers require |
 | `["e", "<event-id>"]`, `["p", "<host-pubkey>"]` | Event revision and host |
-| `["nonce", "<13-digit code>"]` | Code shown by the host |
-| `["verified_at", "<unix>"]` | Time of check-in |
+| `["nonce", "<13-digit code>"]` | The code the attendee entered. Not checked by anyone; carries no proof |
+| `["verified_at", "<unix>"]` | Legacy name for the time the attendee says they checked in. It is not a verification; readers use `created_at` |
+| `["location", …]` | Optional, as typed by the attendee |
 
-Check-ins are self-reported. The code is generated in the host's client and not verified by anyone else, so clients label them as such.
+Check-ins are self-reported. The code is generated in the host's browser and nobody validates it, so any 13-digit number produces an equally valid-looking check-in. Clients must label check-ins as self-reported, must not treat `nonce` or `verified_at` as evidence of attendance, and must not award badges or "verified" status from them. Organizer-attested attendance would need a separate, signed record from the host.
 
 ## Profile Privacy (Kind 30078, NIP-78)
 

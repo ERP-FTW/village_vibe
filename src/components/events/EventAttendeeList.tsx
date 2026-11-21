@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { genUserName } from "@/lib/genUserName";
 import { latestRSVPs } from "@/lib/rsvp";
 import { Users, UserCheck, UserX, HelpCircle } from "lucide-react";
+import { CHECK_IN_TRUST_NOTE } from '@/lib/attendance';
 
 interface EventAttendeeListProps {
   rsvps: NostrEvent[];
@@ -197,9 +198,9 @@ export function EventAttendeeList({ rsvps: allRsvps, isLoading, attendanceRecord
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <UserCheck className="h-4 w-4 text-green-600" />
-              <h4 className="font-semibold">Checked in ({attended.length})</h4>
+              <h4 className="font-semibold">Checked in, self-reported ({attended.length})</h4>
             </div>
-            <p className="text-xs text-muted-foreground">Check-ins are self-reported with the host's code.</p>
+            <p className="text-xs text-muted-foreground">{CHECK_IN_TRUST_NOTE}</p>
             <div className="space-y-2">
               {attended.map((rsvp) => (
                 <AttendeeCard key={rsvp.id} rsvp={rsvp} hasAttended={true} />

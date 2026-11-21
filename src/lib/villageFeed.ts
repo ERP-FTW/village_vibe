@@ -132,11 +132,12 @@ export async function readVillageFeed(
     ...(legacy.status === 'fulfilled' ? legacy.value : []),
   ];
   const tagged = (event: NostrEvent) => isContent(event) && villagesOf(event.tags).some(wantsVillage);
-  // Legacy content is only reachable through `#village`, which some relays reject, and the
-  // all-villages feed has no legacy filter at all: scan recent content in those cases (and
-  // whenever nothing matched) so content from before the indexed tags still shows.
-  const legacyUnavailable = !villages.length || legacy.status === 'rejected';
-  if (legacyUnavailable || !records.some(tagged)) {
+  // Legacy content is only reachable through `#village`, which some relays reject and others
+  // silently answer with nothing, and the all-villages feed has no legacy filter at all. Unless
+  // the legacy query itself returned matches, scan recent content so posts from before the
+  // indexed tags keep showing (new indexed posts must not hide them).
+  const legacyMatched = legacy.status === 'fulfilled' && legacy.value.some(tagged);
+  if (!villages.length || !legacyMatched) {
     try {
       records = [...records, ...await nostr.query([...contentFilters, labels], { signal })];
     } catch (error) {

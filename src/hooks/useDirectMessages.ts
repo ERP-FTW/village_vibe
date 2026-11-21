@@ -190,7 +190,8 @@ export function useDirectMessages(otherUserPubkey?: string) {
   // Merged only when either source changes: a new array on every render would retrigger
   // effects that depend on the message list (e.g. scrolling to the newest message).
   const data = useMemo(() => {
-    if (!legacy.data && !inbox.data) return undefined;
+    // Messages sent this session show even if both history reads failed
+    if (!legacy.data && !inbox.data && !outbox.length) return undefined;
     const giftWrapped: DecryptedMessage[] = me && otherUserPubkey
       ? (inbox.data ?? [])
         .filter(rumor => partnerOf(rumor, me) === otherUserPubkey)
@@ -271,7 +272,8 @@ export function useConversations() {
   // Merge legacy and NIP-17 conversations, keeping each partner's latest message time
   const me = user?.pubkey;
   const data = useMemo(() => {
-    if (!legacy.data && !inbox.data) return undefined;
+    // Conversations started this session show even if both history reads failed
+    if (!legacy.data && !inbox.data && !outbox.length) return undefined;
     const latest = new Map<string, number>();
     for (const { pubkey, lastMessageAt } of legacy.data ?? []) latest.set(pubkey, lastMessageAt);
     if (me) {

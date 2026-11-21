@@ -1,5 +1,6 @@
 import { useRetryDirectMessage, useSendDirectMessage } from './useSendDirectMessage';
 import { retryInvitations, sendInvitations, type InvitationOutcome } from '@/lib/invitations';
+import { lookupInboxesCached } from '@/lib/dmDelivery';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
 import { locationTags } from '@/lib/location';
@@ -458,6 +459,7 @@ export { invitationsComplete, type InvitationOutcome } from '@/lib/invitations';
 
 // Hook to send private event details via DM, reporting what reached whom
 export function useSendPrivateEventDetails() {
+  const { nostr } = useNostr();
   const { mutateAsync: send } = useSendDirectMessage();
   return useMutation({
     mutationFn: async (data: {
@@ -478,6 +480,8 @@ Event ID: ${data.eventId}
 Organizer: ${data.organizer}
 
 This is a private event. Please don't share these details publicly.`;
+      // One inbox lookup for the whole batch (every invitee and the organizer's own copies)
+      await lookupInboxesCached(nostr, [...new Set(data.invitees), data.organizer]);
       return sendInvitations(send, data.eventId, data.invitees, message);
     },
   });

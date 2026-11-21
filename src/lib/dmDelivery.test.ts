@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateSecretKey, getPublicKey } from 'nostr-tools';
 import { NSecSigner, type NostrEvent, type NostrSigner } from '@nostrify/nostrify';
-import { deliverMissing, newDelivery, prepareDirectMessage, type DeliveryRelays } from '@/lib/dmDelivery';
+import { deliverMissing, lookupInboxesCached, newDelivery, prepareDirectMessage, type DeliveryRelays } from '@/lib/dmDelivery';
 import { invitationsComplete, retryInvitations, sendInvitations } from '@/lib/invitations';
 
 const senderKey = generateSecretKey();
@@ -93,6 +93,29 @@ describe('direct message delivery', () => {
     expect(noInbox.published[0].relays).toBeUndefined();
   });
 
+  it('looks up the recipient and sender inboxes together, once', async () => {
+    const recipient = person();
+    const fake = fakeRelays({ inboxes: { [recipient]: [INBOX], [sender]: [SENDER_INBOX] } });
+    const delivered = await deliverMissing(fake.relays, newDelivery(await prepareDirectMessage(signer, sender, recipient, 'hi')));
+    expect(delivered.recipient.status).toBe('delivered');
+    expect(delivered.senderCopy?.status).toBe('delivered');
+    expect(fake.lookups()).toBe(1);
+  });
+
+  it('keeps the client tag on NIP-04 messages sent from an https page', async () => {
+    const original = (globalThis as { location?: unknown }).location;
+    (globalThis as { location?: unknown }).location = { protocol: 'https:', hostname: 'village.example' };
+    try {
+      const nip04Only: NostrSigner = {
+        getPublicKey: () => signer.getPublicKey(), signEvent: (event) => signer.signEvent(event), nip04: signer.nip04,
+      };
+      const prepared = await prepareDirectMessage(nip04Only, sender, person(), 'hello');
+      expect(prepared.protocol === 'nip04' && prepared.event.tags).toContainEqual(['client', 'village.example']);
+    } finally {
+      (globalThis as { location?: unknown }).location = original;
+    }
+  });
+
   it('retries a NIP-04 message with the same signed event', async () => {
     const nip04Only: NostrSigner = {
       getPublicKey: () => signer.getPublicKey(),
@@ -127,7 +150,10 @@ describe('event invitations', () => {
       deliverMissing(fake.relays, newDelivery(await prepareDirectMessage(signer, sender, recipient, message)));
     const retry = (delivery: Parameters<typeof deliverMissing>[1]) => deliverMissing(fake.relays, delivery);
 
+    // The hook primes one lookup for the whole batch
+    await lookupInboxesCached(fake.relays, [alice, bob, carol, sender]);
     const outcome = await sendInvitations(send, `${sender}:seed-swap`, [alice, bob, carol, bob], 'details');
+    expect(fake.lookups()).toBe(1);
     expect(outcome.deliveries).toHaveLength(3); // duplicates collapse
     expect(invitationsComplete(outcome)).toBe(false);
     const undelivered = outcome.deliveries.filter(d => d.recipient.status !== 'delivered').map(d => d.prepared.recipient);

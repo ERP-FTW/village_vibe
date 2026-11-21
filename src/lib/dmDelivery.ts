@@ -61,6 +61,38 @@ function describeError(error: unknown): string {
   return String(error);
 }
 
+/**
+ * Successful lookups per relay pool, reused briefly so a batch (e.g. invitations, which all
+ * need the organizer's inbox) costs one request. Failed lookups are not kept, so a retry
+ * looks again.
+ */
+const lookupCache = new WeakMap<DeliveryRelays, Map<string, { at: number; lookup: Promise<InboxLookup> }>>();
+const LOOKUP_TTL_MS = 2 * 60 * 1000;
+
+/**
+ * Inbox lookups for `pubkeys`: cached or in-flight ones are reused and the rest are looked
+ * up together in one request.
+ */
+export async function lookupInboxesCached(nostr: DeliveryRelays, pubkeys: string[]): Promise<Map<string, InboxLookup>> {
+  let cache = lookupCache.get(nostr);
+  if (!cache) lookupCache.set(nostr, cache = new Map());
+  const now = Date.now();
+  const missing = [...new Set(pubkeys)].filter(pubkey => {
+    const entry = cache!.get(pubkey);
+    return !entry || now - entry.at > LOOKUP_TTL_MS;
+  });
+  if (missing.length) {
+    const batch = lookupInboxes(nostr, missing);
+    for (const pubkey of missing) {
+      const lookup = batch.then(results => results.get(pubkey)!);
+      cache.set(pubkey, { at: now, lookup });
+      // Don't keep failures: the next attempt should look again
+      void lookup.then(result => { if (result.status === 'failed' && cache!.get(pubkey)?.lookup === lookup) cache!.delete(pubkey); });
+    }
+  }
+  return new Map(await Promise.all(pubkeys.map(async (pubkey): Promise<[string, InboxLookup]> => [pubkey, await cache!.get(pubkey)!.lookup])));
+}
+
 /** Looks up NIP-17 inbox relays (kind 10050), telling "none advertised" apart from "lookup failed". */
 export async function lookupInboxes(nostr: DeliveryRelays, pubkeys: string[], signal?: AbortSignal): Promise<Map<string, InboxLookup>> {
   try {
@@ -86,7 +118,9 @@ export async function prepareDirectMessage(signer: NostrSigner, sender: string, 
   }
   if (!signer.nip04) throw new Error('Your signer does not support encrypted messages.');
   const content = await signer.nip04.encrypt(recipient, text);
-  const event = await signer.signEvent({ kind: 4, content, tags: [['p', recipient]], created_at: Math.floor(Date.now() / 1000) });
+  // Same convention as useNostrPublish: on https, name the client
+  const client = typeof location !== 'undefined' && location.protocol === 'https:' ? [['client', location.hostname]] : [];
+  const event = await signer.signEvent({ kind: 4, content, tags: [['p', recipient], ...client], created_at: Math.floor(Date.now() / 1000) });
   return { protocol: 'nip04', sender, recipient, text, event };
 }
 
@@ -127,15 +161,21 @@ export async function deliverMissing(nostr: DeliveryRelays, delivery: MessageDel
     }
   };
 
+  // Look up everyone this attempt may deliver to in one request (reusing recent lookups)
+  const needRecipient = delivery.recipient.status !== 'delivered';
+  const needCopy = !!delivery.senderCopy && delivery.senderCopy.status !== 'delivered';
+  const inboxes = await lookupInboxesCached(nostr, [
+    ...(needRecipient ? [prepared.recipient] : []),
+    ...(needCopy ? [prepared.sender] : []),
+  ]);
+
   let next = delivery;
-  if (next.recipient.status !== 'delivered') {
-    const inbox = (await lookupInboxes(nostr, [prepared.recipient])).get(prepared.recipient)!;
-    next = { ...next, recipient: await send(prepared.recipientWrap, inbox) };
+  if (needRecipient) {
+    next = { ...next, recipient: await send(prepared.recipientWrap, inboxes.get(prepared.recipient)!) };
     if (next.recipient.status !== 'delivered') return next;
   }
-  if (next.senderCopy && next.senderCopy.status !== 'delivered') {
-    const inbox = (await lookupInboxes(nostr, [prepared.sender])).get(prepared.sender)!;
-    next = { ...next, senderCopy: await send(prepared.senderWrap, inbox) };
+  if (needCopy) {
+    next = { ...next, senderCopy: await send(prepared.senderWrap, inboxes.get(prepared.sender)!) };
   }
   return next;
 }

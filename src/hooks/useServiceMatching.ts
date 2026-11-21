@@ -27,7 +27,8 @@ export function useAdminSuggestMatch() {
         sendMessage({ recipient: offerEvent.pubkey, message: `Your offer may match ${request}. ${suggestion}` }),
         sendMessage({ recipient: requestEvent.pubkey, message: `Your request may match ${offer}. ${suggestion}` }),
       ]);
-      return sent.filter(result => result.status === 'rejected').length;
+      // Not delivered: the message couldn't be prepared, or no relay accepted it
+      return sent.filter(result => result.status === 'rejected' || result.value.recipient.status !== 'delivered').length;
     },
   });
 }

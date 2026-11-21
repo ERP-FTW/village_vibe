@@ -1,12 +1,11 @@
 import { useAppContext } from "@/hooks/useAppContext";
-import { Badge } from "@/components/ui/badge";
 import { Wifi } from "lucide-react";
 
 /**
  * Small inline indicator showing active relays
  */
 export function RelayStatusIndicator() {
-  const { config, presetRelays } = useAppContext();
+  const { config } = useAppContext();
   
   const activeRelays = [
     config.relayUrl,

@@ -110,7 +110,7 @@ export function TribeView({ tribeId }: TribeViewProps) {
     );
   }
 
-  if (tribeError || (!tribe && !tribeLoading)) {
+  if (!tribe) {
     return (
       <div className="max-w-2xl mx-auto">
         <Card className="border-dashed">

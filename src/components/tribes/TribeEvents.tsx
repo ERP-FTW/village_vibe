@@ -5,7 +5,6 @@ import { DebugEventsDialog } from "../events/DebugEventsDialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Plus, Calendar, Bug } from "lucide-react";
 
 interface TribeEventsProps {

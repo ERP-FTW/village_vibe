@@ -118,8 +118,10 @@ export function EventModerationDialog({
         const label = labels[action];
         const namespace = action === 'hide' ? 'moderation' : 'promotion';
 
+        if (event.kind !== 36959 && event.kind !== 31923) throw new Error("Unsupported event kind");
         createLabel({
           eventId,
+          eventKind: event.kind,
           label,
           namespace,
           content: reason.trim() || undefined,

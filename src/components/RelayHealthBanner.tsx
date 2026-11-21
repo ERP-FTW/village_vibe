@@ -2,7 +2,7 @@ import { useRelayHealth } from "@/hooks/useRelayHealth";
 import { useAppContext } from "@/hooks/useAppContext";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RelaySelector } from "./RelaySelector";
-import { AlertTriangle, RefreshCw, Info } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
 
 export function RelayHealthBanner() {

@@ -13,7 +13,7 @@ export function useRelayHealth() {
       
       try {
         // Simple query to test relay responsiveness
-        const events = await nostr.query([{
+        await nostr.query([{
           kinds: [0],
           limit: 1,
         }], { signal: AbortSignal.timeout(3000) });

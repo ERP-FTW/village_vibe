@@ -2,7 +2,6 @@ import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type { NostrEvent } from '@nostrify/nostrify';
-import { useCurrentUser } from './useCurrentUser';
 
 /**
  * Event Coordination System

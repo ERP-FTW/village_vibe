@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 // Other imports
 
 // Locate in the JSX the menu or navigation bar component. For example:

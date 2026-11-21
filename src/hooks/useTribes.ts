@@ -74,7 +74,6 @@ export function useTribe(tribeId: string) {
     refetchOnReconnect: true, // Refetch when reconnecting
     networkMode: 'always', // Don't pause queries when offline
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(15000)]); // Increased to 15s
 
       // Parse tribe coordinates (format: pubkey:d-identifier)
       const [pubkey, dTag] = tribeId.split(':');

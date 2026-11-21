@@ -23,7 +23,7 @@ interface ItemCardProps {
   claims: ItemClaim[];
 }
 
-export function ItemCard({ item, event, canManage, claims }: ItemCardProps) {
+export function ItemCard({ item, event, claims }: ItemCardProps) {
   const { user } = useCurrentUser();
   const { mutate: claimItem, isPending: isClaiming } = useClaimItem();
   const { mutateAsync: publish } = useNostrPublish();

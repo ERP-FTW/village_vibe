@@ -19,7 +19,7 @@ interface RoleCardProps {
   claims: RoleClaim[];
 }
 
-export function RoleCard({ role, event, canManage, claims }: RoleCardProps) {
+export function RoleCard({ role, event, claims }: RoleCardProps) {
   const { user } = useCurrentUser();
   const { mutate: claimRole, isPending: isClaiming } = useClaimRole();
   const { mutateAsync: publish } = useNostrPublish();

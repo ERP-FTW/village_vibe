@@ -2,7 +2,9 @@ image: node:22
 
 default:
   interruptible: true
-  timeout: 1 minute
+  timeout: 10 minutes
+  before_script:
+    - npm ci
 
 stages:
   - test

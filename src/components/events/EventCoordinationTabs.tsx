@@ -7,7 +7,7 @@ import { EventItemsTab } from "./coordination/EventItemsTab";
 import { EventActionsTab } from "./coordination/EventActionsTab";
 import { EventOutcomesTab } from "./coordination/EventOutcomesTab";
 import { DebugCoordinationDialog } from "./coordination/DebugCoordinationDialog";
-import { useEventCoordinationSummary } from "@/hooks/useEventCoordination";
+import { type EventCoordinationSummary, useEventCoordinationSummary } from "@/hooks/useEventCoordination";
 import type { NostrEvent } from "@nostrify/nostrify";
 
 interface EventCoordinationTabsProps {
@@ -90,7 +90,7 @@ export function EventCoordinationTabs({ event, isOrganizer, isModerator }: Event
 }
 
 // Overview tab showing summary and gaps
-function EventOverviewTab({ event, summary, isLoading }: { event: NostrEvent; summary: any; isLoading: boolean }) {
+function EventOverviewTab({ event, summary, isLoading }: { event: NostrEvent; summary: EventCoordinationSummary | undefined; isLoading: boolean }) {
   if (isLoading) {
     return <div>Loading coordination summary...</div>;
   }
@@ -106,10 +106,10 @@ function EventOverviewTab({ event, summary, isLoading }: { event: NostrEvent; su
     );
   }
 
-  const gaps = [];
+  const gaps: string[] = [];
 
   // Calculate unfilled spots across all roles
-  const unfilledSpots = summary.roles.items.reduce((sum: number, r: any) => {
+  const unfilledSpots = summary.roles.items.reduce((sum, r) => {
     const spotsLeft = r.slots - r.filled;
     return sum + (spotsLeft > 0 ? spotsLeft : 0);
   }, 0);
@@ -119,7 +119,7 @@ function EventOverviewTab({ event, summary, isLoading }: { event: NostrEvent; su
   }
 
   // Calculate unclaimed item quantities
-  const unclaimedQty = summary.items.items.reduce((sum: number, i: any) => {
+  const unclaimedQty = summary.items.items.reduce((sum, i) => {
     const qtyLeft = i.quantity - i.claimed;
     return sum + (qtyLeft > 0 ? qtyLeft : 0);
   }, 0);
@@ -155,8 +155,8 @@ function EventOverviewTab({ event, summary, isLoading }: { event: NostrEvent; su
             Roles
           </div>
           <div className="text-2xl font-bold">
-            {summary.roles.items.reduce((sum: number, r: any) => sum + r.filled, 0)}/
-            {summary.roles.items.reduce((sum: number, r: any) => sum + r.slots, 0)}
+            {summary.roles.items.reduce((sum, r) => sum + r.filled, 0)}/
+            {summary.roles.items.reduce((sum, r) => sum + r.slots, 0)}
           </div>
           <div className="text-xs text-muted-foreground">
             spots filled ({summary.roles.filled} of {summary.roles.total} roles full)
@@ -169,8 +169,8 @@ function EventOverviewTab({ event, summary, isLoading }: { event: NostrEvent; su
             Items
           </div>
           <div className="text-2xl font-bold">
-            {summary.items.items.reduce((sum: number, i: any) => sum + i.claimed, 0)}/
-            {summary.items.items.reduce((sum: number, i: any) => sum + i.quantity, 0)}
+            {summary.items.items.reduce((sum, i) => sum + i.claimed, 0)}/
+            {summary.items.items.reduce((sum, i) => sum + i.quantity, 0)}
           </div>
           <div className="text-xs text-muted-foreground">
             items claimed ({summary.items.claimed} of {summary.items.total} complete)

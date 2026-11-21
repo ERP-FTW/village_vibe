@@ -27,15 +27,16 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
   
   const [newMessage, setNewMessage] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const otherUserMetadata = otherUser?.metadata;
   const otherUserName = otherUserMetadata?.name || otherUserMetadata?.display_name || genUserName(otherUserPubkey);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Keep the newest message in view by scrolling the message pane only (not the page)
+  const messageCount = messages?.length ?? 0;
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const viewport = scrollAreaRef.current?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]');
+    if (viewport) viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
+  }, [messageCount]);
 
   const handleSendMessage = async () => {
     if (!user || !newMessage.trim()) return;
@@ -57,8 +58,9 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Don't send while an IME composition (e.g. Japanese, Chinese input) is in progress
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSendMessage();
     }
@@ -79,7 +81,7 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-[600px] max-w-2xl mx-auto">
+    <div className="flex flex-col h-[calc(100dvh-14rem)] min-h-[420px] lg:h-[600px] max-w-2xl mx-auto">
       {/* Chat Header */}
       <Card className="rounded-b-none border-b-0">
         <CardHeader className="pb-3">
@@ -102,7 +104,7 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
       </Card>
 
       {/* Messages Area */}
-      <Card className="flex-1 rounded-none border-b-0">
+      <Card className="flex-1 min-h-0 overflow-hidden rounded-none border-b-0">
         <CardContent className="p-0 h-full">
           <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
             {isLoading ? (
@@ -160,7 +162,6 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
                     </div>
                   </div>
                 ))}
-                <div ref={messagesEndRef} />
               </div>
             ) : (
               <div className="flex items-center justify-center h-full">
@@ -185,7 +186,8 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
               placeholder="Type your message..."
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
+              aria-label={`Message ${otherUserName}`}
               className="flex-1 min-h-[40px] max-h-[120px] resize-none"
               rows={1}
             />
@@ -194,6 +196,7 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
               disabled={isSending || !newMessage.trim()}
               size="sm"
               className="self-end"
+              aria-label="Send message"
             >
               {isSending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

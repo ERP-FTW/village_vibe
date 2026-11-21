@@ -243,6 +243,7 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
       createEnhancedEvent({
         tribe: tribeSlug,
         title: formData.title.trim(),
+        summary: formData.summary,
         content: formData.description.trim(),
         start: startTimestamp,
         end: endTimestamp,

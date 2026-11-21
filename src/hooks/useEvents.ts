@@ -529,6 +529,7 @@ export function useCreateEnhancedEvent() {
     mutationFn: async (data: {
       tribe: string;
       title: string;
+      summary?: string; // Short one-line summary
       content: string;
       start: number;
       end?: number;
@@ -567,6 +568,11 @@ export function useCreateEnhancedEvent() {
       // Add image tag if provided
       if (data.image) {
         tags.push(['image', data.image]);
+      }
+
+      // Add summary tag if provided (whitespace-only counts as absent)
+      if (data.summary?.trim()) {
+        tags.push(['summary', data.summary]);
       }
 
       // Add end time if provided

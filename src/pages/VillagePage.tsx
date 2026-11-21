@@ -3,6 +3,7 @@ import { useSeoMeta } from '@unhead/react';
 import { useParams } from 'react-router-dom';
 import { useNostr } from '@nostrify/react';
 import { useMultiVillageStories } from '@/hooks/useStories';
+import { coordinateOf } from '@/lib/moderation';
 import { useVillageServices } from '@/hooks/useServices';
 import { useVillageEvents } from '@/hooks/useEvents';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -63,7 +64,7 @@ const VillagePage = () => {
     }
   })();
 
-  const { data: stories, isLoading: storiesLoading, error: storiesError } = useMultiVillageStories(villagesToQuery, {
+  const { data: storyFeed, isLoading: storiesLoading, error: storiesError } = useMultiVillageStories(villagesToQuery, {
     search: search.trim() || undefined,
     limit: 20,
   });
@@ -93,6 +94,8 @@ const VillagePage = () => {
     return items.filter(item => item.created_at >= threshold);
   };
 
+  const stories = storyFeed?.stories;
+
   // Combine and sort all content
   const allContent = [
     ...(stories || []).map(item => ({ ...item, type: 'story' as const })),
@@ -102,9 +105,9 @@ const VillagePage = () => {
 
   const filteredContent = filterByTime(allContent);
 
-  // Get featured stories (stories with village tags are considered "featured")
+  // Featured stories: ones a moderator of the story's tribe labelled `village-featured`
   const featuredStories = (stories || [])
-    .filter(story => story.tags.some(([name]) => name === 'village'))
+    .filter(story => storyFeed?.featured.includes(coordinateOf(story)))
     .slice(0, 6);
 
   const renderContent = (content: (NostrEvent & { type: 'story' | 'service' | 'event' })[]) => {

@@ -68,47 +68,6 @@ export function useTribeStories(tribeId: string, filters: StoryFilters = {}) {
   });
 }
 
-// Hook to get stories for a village
-export function useVillageStories(villageSlug: string, filters: StoryFilters = {}) {
-  const { nostr } = useNostr();
-  const { preferences } = useVillagePreferences();
-
-  const { search, ...queryFilters } = filters;
-  return useQuery({
-    queryKey: ['village-stories', villageSlug, queryFilters, preferences.hiddenTribes],
-    select: (events: NostrEvent[]) => searchStories(events, search),
-    staleTime: 30000, // Consider data fresh for 30 seconds
-    queryFn: async (c) => {
-      const { signal } = c;
-
-
-      // Strategy 1: Try to query with village tag filter first (more efficient if relay supports it)
-      const villageEvents = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
-        [{ kinds: [30023], limit: filters.limit || 200 }], signal);
-
-      // Apply additional filters
-      const filteredEvents = villageEvents;
-
-
-      const validEvents = filteredEvents.filter(validateStoryEvent);
-
-      // Filter out stories from hidden tribes
-      const nonHiddenEvents = validEvents.filter(event => {
-        const tribeTag = event.tags.find(([name]) => name === 'tribe')?.[1];
-        return !tribeTag || !preferences.hiddenTribes.includes(tribeTag);
-      });
-
-
-      // Deduplicate events by ID and sort by creation date (newest first)
-      const uniqueEvents = Array.from(
-        new Map(nonHiddenEvents.map(event => [event.id, event])).values()
-      );
-
-      return uniqueEvents.sort((a, b) => b.created_at - a.created_at);
-    },
-  });
-}
-
 // Hook to get a specific story
 export function useStory(storyId: string) {
   const { nostr } = useNostr();
@@ -230,6 +189,8 @@ export function useCreateStoryLabel() {
     mutationFn: async (data: {
       storyId: string;
       label: string;
+      /** Villages a promotion or feature label applies to. */
+      villages?: string[];
       namespace?: string;
       content?: string;
     }) => {
@@ -245,6 +206,8 @@ export function useCreateStoryLabel() {
         ['l', data.label, data.namespace || 'ugc'],
         ['alt', `Story moderation label: ${data.label}`],
       ];
+
+      data.villages?.forEach(village => tags.push(['village', village]));
 
       // Add namespace tag if provided
       if (data.namespace) {
@@ -441,13 +404,13 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
   const { search, ...queryFilters } = filters;
   return useQuery({
     queryKey: ['multi-village-stories', villages, queryFilters, preferences.hiddenTribes],
-    select: (events: NostrEvent[]) => searchStories(events, search),
+    select: (feed: { stories: NostrEvent[]; featured: string[] }) => ({ ...feed, stories: searchStories(feed.stories, search) }),
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
       const { signal } = c;
 
 
-      const villageEvents = await readVillageFeed(nostr, villages,
+      const { events: villageEvents, featured } = await readVillageFeed(nostr, villages,
         [{ kinds: [30023], limit: filters.limit || 200 }], signal);
 
       // Apply additional filters
@@ -468,7 +431,11 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
         new Map(nonHiddenEvents.map(event => [event.id, event])).values()
       );
 
-      return uniqueEvents.sort((a, b) => b.created_at - a.created_at);
+      return {
+        stories: uniqueEvents.sort((a, b) => b.created_at - a.created_at),
+        // Coordinates a moderator of the story's tribe featured in these villages
+        featured: [...featured],
+      };
     },
   });
 }

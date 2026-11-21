@@ -62,6 +62,7 @@ export function EventModerationDialog({
           eventId,
           eventKind: event.kind,
           label: labels[action],
+          villages: action !== 'hide' && villageSlug ? [villageSlug] : undefined,
           namespace: action === 'hide' ? 'moderation' : 'promotion',
           content: reason.trim() || undefined,
         });

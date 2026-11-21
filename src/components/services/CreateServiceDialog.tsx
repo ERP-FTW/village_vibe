@@ -381,6 +381,9 @@ export function CreateServiceDialog({ tribeId, children, defaultType = 'offer' }
             {/* Villages */}
             <div className="space-y-2">
               <FormLabel>Villages (Optional)</FormLabel>
+              <p className="text-xs text-muted-foreground">
+                Shows in a village feed when your tribe is associated with that village, or once a tribe moderator promotes it.
+              </p>
               <div className="flex gap-2">
                 <Input
                   placeholder="Add village..."

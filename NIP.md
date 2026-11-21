@@ -14,6 +14,12 @@ Events (36959, 31923), stories (30023) and services (38857, 30627) are linked to
 - Village slugs are lowercase ASCII words joined by `-`, for example `east-side`.
 - A tribe feed accepts content tagged with the tribe coordinate only from the tribe's members. Events are accepted only from the owner, admins, moderators and event creators.
 - A tribe feed drops content that a tribe moderator has labelled `tribe-hidden` (kind 1985).
+- A village feed for village V shows content only when one of these holds:
+  - its tribe definition is associated with V (the tribe carries `["village", V]`);
+  - its author is a moderator of its tribe;
+  - a moderator of its tribe published a `village-promoted` label (kind 1985) that references the content and carries `["village", V]`.
+
+  Self-applied village tags from anyone else, and labels from non-moderators, are ignored. `village-featured` labels from the tribe's moderators mark content as featured in the villages they name.
 - Content from before the indexed tags is found through its authors (tribe feeds) or the legacy `village` tag (village feeds).
 
 ## Stories (NIP-23 Extension)

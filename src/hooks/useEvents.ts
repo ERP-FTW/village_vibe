@@ -236,7 +236,7 @@ export function useVillageEvents(villageSlug: string, filters: EventFilters = {}
       const { signal } = c;
 
 
-      const villageEvents = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
+      const { events: villageEvents } = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
         [{ kinds: [36959], limit: filters.limit || 150 }, { kinds: [31923], limit: 50 }], signal);
 
       // Validate events
@@ -488,6 +488,8 @@ export function useCreateEventLabel() {
       eventId: string;
       eventKind: 36959 | 31923;
       label: string;
+      /** Villages a promotion or feature label applies to. */
+      villages?: string[];
       namespace?: string;
       content?: string;
     }) => {
@@ -503,6 +505,8 @@ export function useCreateEventLabel() {
         ['l', data.label, data.namespace || 'ugc'],
         ['alt', `Event moderation label: ${data.label}`],
       ];
+
+      data.villages?.forEach(village => tags.push(['village', village]));
 
       // Add namespace tag if provided
       if (data.namespace) {

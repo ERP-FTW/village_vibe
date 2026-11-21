@@ -63,6 +63,7 @@ export function ServiceModerationDialog({
           serviceId,
           serviceKind: service.kind,
           label: labels[action],
+          villages: action !== 'hide' && villageSlug ? [villageSlug] : undefined,
           namespace: action === 'hide' ? 'moderation' : 'promotion',
           content: reason.trim() || undefined,
         });

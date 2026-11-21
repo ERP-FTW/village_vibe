@@ -117,7 +117,7 @@ export function useVillageServices(villageSlug: string, filters: ServiceFilters 
       if (!filters.type || filters.type === 'request') kinds.push(30627);
 
 
-      const villageEvents = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
+      const { events: villageEvents } = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
         [{ kinds, limit: filters.limit || 200 }], signal);
 
       // Apply additional filters
@@ -305,6 +305,8 @@ export function useCreateServiceLabel() {
       serviceId: string;
       serviceKind: 38857 | 30627;
       label: string;
+      /** Villages a promotion or feature label applies to. */
+      villages?: string[];
       namespace?: string;
       content?: string;
     }) => {
@@ -320,6 +322,8 @@ export function useCreateServiceLabel() {
         ['l', data.label, data.namespace || 'ugc'],
         ['alt', `Service moderation label: ${data.label}`],
       ];
+
+      data.villages?.forEach(village => tags.push(['village', village]));
 
       // Add namespace tag if provided
       if (data.namespace) {

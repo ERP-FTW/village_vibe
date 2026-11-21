@@ -25,13 +25,13 @@ export function RoleCard({ role, event, claims }: RoleCardProps) {
 
   const activeClaims = claims.filter(c => c.status === 'active');
   const userClaim = activeClaims.find(c => c.claimedBy === user?.pubkey);
-  // Use role.filled (computed by batched query) as primary source; fall back to local count
-  const filledCount = role.filled || activeClaims.length;
-  const spotsLeft = role.slots - filledCount;
+  // role.filled counts distinct people with an active claim (computed by the batched query)
+  const filledCount = role.filled;
+  const spotsLeft = Math.max(0, role.slots - filledCount);
 
   const dTag = event.tags.find(([n]) => n === 'd')?.[1] ?? '';
 
-  const handleClaim = async () => {
+  const handleClaim = async (status: 'active' | 'withdrawn' = 'active') => {
     if (!user) {
       toast({
         title: "Login Required",
@@ -43,7 +43,8 @@ export function RoleCard({ role, event, claims }: RoleCardProps) {
 
     claimRole({
       roleId: role.id,
-      roleEventId: event.id,
+      roleEventId: role.nostrId,
+      status,
       eventId: event.id,
       eventKind: event.kind,
       eventAuthor: event.pubkey,
@@ -52,14 +53,14 @@ export function RoleCard({ role, event, claims }: RoleCardProps) {
       onSuccess: () => {
         toast({
           title: "Success",
-          description: "You've claimed this role!",
+          description: status === 'active' ? "You've claimed this role!" : "You've withdrawn from this role.",
         });
       },
       onError: (err) => {
         console.error('Failed to claim role:', err);
         toast({
           title: "Error",
-          description: "Failed to claim role",
+          description: err instanceof Error ? err.message : "Failed to update your claim",
           variant: "destructive",
         });
       },
@@ -133,7 +134,7 @@ export function RoleCard({ role, event, claims }: RoleCardProps) {
           {/* Actions */}
           {!userClaim && spotsLeft > 0 && (
             <Button
-              onClick={handleClaim}
+              onClick={() => handleClaim()}
               disabled={isClaiming || !user}
               className="w-full"
             >
@@ -142,8 +143,11 @@ export function RoleCard({ role, event, claims }: RoleCardProps) {
           )}
 
           {userClaim && (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-center text-sm text-green-700">
-              ✓ You've claimed this role
+            <div className="flex items-center justify-between gap-2 bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-sm text-green-700">
+              <span>✓ You've claimed this role</span>
+              <Button size="sm" variant="ghost" onClick={() => handleClaim('withdrawn')} disabled={isClaiming}>
+                Withdraw
+              </Button>
             </div>
           )}
 

@@ -1,3 +1,5 @@
+import { useNostrPublish } from './useNostrPublish';
+import { readVillageFeed } from '@/lib/villageFeed';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -12,14 +14,23 @@ export interface StoryFilters {
   limit?: number;
 }
 
+function searchStories(events: NostrEvent[], search?: string) {
+  if (!search) return events;
+  const term = search.toLowerCase();
+  return events.filter(event => event.content.toLowerCase().includes(term) ||
+    event.tags.some(([name, value]) => (name === 'title' || name === 'summary') && value?.toLowerCase().includes(term)));
+}
+
 // Hook to get stories for a specific tribe
 export function useTribeStories(tribeId: string, filters: StoryFilters = {}) {
   const { nostr } = useNostr();
 
+  const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['tribe-stories', tribeId, filters],
+    queryKey: ['tribe-stories', tribeId, queryFilters],
+    select: (events: NostrEvent[]) => searchStories(events, search),
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Parse tribe coordinates
       const [pubkey, dTag] = tribeId.split(':');
@@ -52,18 +63,8 @@ export function useTribeStories(tribeId: string, filters: StoryFilters = {}) {
       }
 
       // Apply additional filters
-      let filteredEvents = tribeEvents;
+      const filteredEvents = tribeEvents;
 
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        filteredEvents = filteredEvents.filter(event => {
-          const title = event.tags.find(([name]) => name === 'title')?.[1] || '';
-          const summary = event.tags.find(([name]) => name === 'summary')?.[1] || '';
-          return title.toLowerCase().includes(searchLower) ||
-                 summary.toLowerCase().includes(searchLower) ||
-                 event.content.toLowerCase().includes(searchLower);
-        });
-      }
 
       const validEvents = filteredEvents.filter(validateStoryEvent);
       console.log('✅ Valid stories:', validEvents.length);
@@ -79,118 +80,23 @@ export function useVillageStories(villageSlug: string, filters: StoryFilters = {
   const { nostr } = useNostr();
   const { preferences } = useVillagePreferences();
 
+  const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['village-stories', villageSlug, filters, preferences.hiddenTribes],
+    queryKey: ['village-stories', villageSlug, queryFilters, preferences.hiddenTribes],
+    select: (events: NostrEvent[]) => searchStories(events, search),
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       console.log('🏘️ Querying village stories for:', villageSlug);
 
       // Strategy 1: Try to query with village tag filter first (more efficient if relay supports it)
-      let villageEvents: NostrEvent[] = [];
-
-      if (villageSlug !== 'main') {
-        try {
-          console.log('🔍 Trying relay-level village filter for:', villageSlug);
-          villageEvents = await nostr.query([{
-            kinds: [30023],
-            '#village': [villageSlug],
-            limit: filters.limit || 100,
-          }], { signal });
-          console.log('📦 Found stories via relay filter:', villageEvents.length);
-        } catch {
-          console.log('⚠️ Relay-level village filter failed, falling back to client-side filtering');
-        }
-      }
-
-      // Strategy 2: If relay filtering didn't work or for main village, use client-side filtering
-      if (villageEvents.length === 0 || villageSlug === 'main') {
-        console.log('🔍 Using client-side filtering for village stories');
-
-        // Get all stories and filter client-side
-        const allEvents = await nostr.query([{
-          kinds: [30023], // Long-form content (NIP-23)
-          limit: filters.limit || 200, // Increase limit for client-side filtering
-        }], { signal });
-
-        console.log('📦 Found all stories for client-side filtering:', allEvents.length);
-
-        // Filter for stories that have village tags
-        villageEvents = allEvents.filter(event => {
-          const villageTags = event.tags.filter(([name]) => name === 'village');
-
-          if (villageSlug === 'main') {
-            // For main village page, show all village content
-            return villageTags.length > 0;
-          } else {
-            // For specific village pages, filter by that village
-            return villageTags.some(([, value]) => value === villageSlug);
-          }
-        });
-
-        console.log('🏘️ Stories with village tag (client-side):', villageEvents.length);
-      }
-
-      // Strategy 3: Also query for stories with promotion labels and merge them
-      try {
-        console.log('🔍 Querying promotion labels for village:', villageSlug);
-        const promotionLabels = await nostr.query([{
-          kinds: [1985], // Labels
-          '#l': ['village-promoted'],
-          limit: 100,
-        }], { signal });
-
-        console.log('📋 Found promotion labels:', promotionLabels.length);
-
-        // Extract story references from promotion labels
-        const promotedStoryRefs = promotionLabels
-          .map(label => label.tags.find(([name]) => name === 'a')?.[1])
-          .filter((ref): ref is string => Boolean(ref))
-          .filter(ref => ref.startsWith('30023:'));
-
-        if (promotedStoryRefs.length > 0) {
-          console.log('📚 Found promoted story references:', promotedStoryRefs.length);
-
-          // Query the actual promoted stories
-          const promotedStories = await nostr.query([{
-            kinds: [30023],
-            // Note: We can't directly query by 'a' tag, so we'll need to get all and filter
-            limit: 200,
-          }], { signal });
-
-          // Filter promoted stories and merge with village events
-          const matchingPromotedStories = promotedStories.filter(story => {
-            const storyRef = `30023:${story.pubkey}:${story.tags.find(([name]) => name === 'd')?.[1]}`;
-            return promotedStoryRefs.includes(storyRef);
-          });
-
-          console.log('✨ Found matching promoted stories:', matchingPromotedStories.length);
-
-          // Merge with existing village events (avoid duplicates)
-          const existingIds = new Set(villageEvents.map(e => e.id));
-          const newPromotedStories = matchingPromotedStories.filter(story => !existingIds.has(story.id));
-          villageEvents = [...villageEvents, ...newPromotedStories];
-
-          console.log('🔄 Merged promoted stories, total:', villageEvents.length);
-        }
-      } catch (err) {
-        console.log('⚠️ Failed to query promotion labels:', err);
-      }
+      const villageEvents = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
+        [{ kinds: [30023], limit: filters.limit || 200 }], signal);
 
       // Apply additional filters
-      let filteredEvents = villageEvents;
+      const filteredEvents = villageEvents;
 
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        filteredEvents = filteredEvents.filter(event => {
-          const title = event.tags.find(([name]) => name === 'title')?.[1] || '';
-          const summary = event.tags.find(([name]) => name === 'summary')?.[1] || '';
-          return title.toLowerCase().includes(searchLower) ||
-                 summary.toLowerCase().includes(searchLower) ||
-                 event.content.toLowerCase().includes(searchLower);
-        });
-      }
 
       const validEvents = filteredEvents.filter(validateStoryEvent);
       console.log('✅ Valid village stories after all strategies:', validEvents.length);
@@ -220,7 +126,7 @@ export function useStory(storyId: string) {
   return useQuery({
     queryKey: ['story', storyId],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Parse story coordinates (format: pubkey:d-identifier)
       const [pubkey, dTag] = storyId.split(':');
@@ -250,7 +156,7 @@ export function useStoryLabels(storyId: string) {
   return useQuery({
     queryKey: ['story-labels', storyId],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Parse story coordinates
       const [pubkey, dTag] = storyId.split(':');
@@ -273,8 +179,7 @@ export function useStoryLabels(storyId: string) {
 
 // Hook to create or update a story
 export function useCreateStory() {
-  const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       tribe: string;
@@ -324,27 +229,8 @@ export function useCreateStory() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, dTag, eventData };
-    },
-    onSuccess: (result, variables) => {
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({
-        queryKey: ['tribe-stories']
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['village-stories']
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['multi-village-stories']
-      });
-      if (variables.villages) {
-        variables.villages.forEach(village => {
-          queryClient.invalidateQueries({
-            queryKey: ['village-stories', village]
-          });
-        });
-      }
     },
   });
 }
@@ -352,7 +238,7 @@ export function useCreateStory() {
 // Hook to create a story label (for moderation)
 export function useCreateStoryLabel() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       storyId: string;
@@ -386,7 +272,7 @@ export function useCreateStoryLabel() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, eventData };
     },
     onSuccess: (_, variables) => {
@@ -411,7 +297,7 @@ export function useCreateStoryLabel() {
 // Hook to promote a story to villages (creates label AND updates story with village tags)
 export function usePromoteStoryToVillages() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       story: NostrEvent;
@@ -466,6 +352,8 @@ export function usePromoteStoryToVillages() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(updatedStory);
+      await publish(promotionLabel);
       return {
         storyId,
         updatedStory,
@@ -562,118 +450,22 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
   const { nostr } = useNostr();
   const { preferences } = useVillagePreferences();
 
+  const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['multi-village-stories', villages, filters, preferences.hiddenTribes],
+    queryKey: ['multi-village-stories', villages, queryFilters, preferences.hiddenTribes],
+    select: (events: NostrEvent[]) => searchStories(events, search),
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       console.log('🏘️ Querying stories for multiple villages:', villages);
 
-      let villageEvents: NostrEvent[] = [];
-
-      // Strategy 1: Try relay-level filtering for each village
-      if (villages.length > 0) {
-        try {
-          console.log('🔍 Trying relay-level village filters for:', villages);
-          const villageQueries = villages.map(village => ({
-            kinds: [30023],
-            '#village': [village],
-            limit: Math.ceil((filters.limit || 100) / villages.length),
-          }));
-
-          const villageResults = await Promise.all(
-            villageQueries.map(query =>
-              nostr.query([query], { signal }).catch(() => [])
-            )
-          );
-
-          villageEvents = villageResults.flat();
-          console.log('📦 Found stories via relay filters:', villageEvents.length);
-        } catch {
-          console.log('⚠️ Relay-level village filters failed, falling back to client-side filtering');
-        }
-      }
-
-      // Strategy 2: If relay filtering didn't work, use client-side filtering
-      if (villageEvents.length === 0) {
-        console.log('🔍 Using client-side filtering for multiple villages');
-
-        // Get all stories and filter client-side
-        const allEvents = await nostr.query([{
-          kinds: [30023], // Long-form content (NIP-23)
-          limit: filters.limit || 200, // Increase limit for client-side filtering
-        }], { signal });
-
-        console.log('📦 Found all stories for client-side filtering:', allEvents.length);
-
-        // Filter for stories that match any of the specified villages
-        villageEvents = allEvents.filter(event => {
-          const villageTags = event.tags.filter(([name]) => name === 'village');
-          return villageTags.some(([, value]) => villages.includes(value));
-        });
-
-        console.log('🏘️ Stories matching villages (client-side):', villageEvents.length);
-      }
-
-      // Strategy 3: Also query for stories with promotion labels
-      try {
-        console.log('🔍 Querying promotion labels for multiple villages');
-        const promotionLabels = await nostr.query([{
-          kinds: [1985], // Labels
-          '#l': ['village-promoted'],
-          limit: 100,
-        }], { signal });
-
-        console.log('📋 Found promotion labels:', promotionLabels.length);
-
-        // Extract story references from promotion labels
-        const promotedStoryRefs = promotionLabels
-          .map(label => label.tags.find(([name]) => name === 'a')?.[1])
-          .filter((ref): ref is string => Boolean(ref))
-          .filter(ref => ref.startsWith('30023:'));
-
-        if (promotedStoryRefs.length > 0) {
-          console.log('📚 Found promoted story references:', promotedStoryRefs.length);
-
-          // Query the actual promoted stories
-          const promotedStories = await nostr.query([{
-            kinds: [30023],
-            limit: 200,
-          }], { signal });
-
-          // Filter promoted stories and merge with village events
-          const matchingPromotedStories = promotedStories.filter(story => {
-            const storyRef = `30023:${story.pubkey}:${story.tags.find(([name]) => name === 'd')?.[1]}`;
-            return promotedStoryRefs.includes(storyRef);
-          });
-
-          console.log('✨ Found matching promoted stories:', matchingPromotedStories.length);
-
-          // Merge with existing village events (avoid duplicates)
-          const existingIds = new Set(villageEvents.map(e => e.id));
-          const newPromotedStories = matchingPromotedStories.filter(story => !existingIds.has(story.id));
-          villageEvents = [...villageEvents, ...newPromotedStories];
-
-          console.log('🔄 Merged promoted stories, total:', villageEvents.length);
-        }
-      } catch (err) {
-        console.log('⚠️ Failed to query promotion labels:', err);
-      }
+      const villageEvents = await readVillageFeed(nostr, villages,
+        [{ kinds: [30023], limit: filters.limit || 200 }], signal);
 
       // Apply additional filters
-      let filteredEvents = villageEvents;
+      const filteredEvents = villageEvents;
 
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        filteredEvents = filteredEvents.filter(event => {
-          const title = event.tags.find(([name]) => name === 'title')?.[1] || '';
-          const summary = event.tags.find(([name]) => name === 'summary')?.[1] || '';
-          return title.toLowerCase().includes(searchLower) ||
-                 summary.toLowerCase().includes(searchLower) ||
-                 event.content.toLowerCase().includes(searchLower);
-        });
-      }
 
       const validEvents = filteredEvents.filter(validateStoryEvent);
       console.log('✅ Valid village stories after all strategies:', validEvents.length);

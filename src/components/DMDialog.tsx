@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
+import { useSendDirectMessage } from "@/hooks/useSendDirectMessage";
 import { useToast } from "@/hooks/useToast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ interface DMDialogProps {
 export function DMDialog({ recipientPubkey, recipientName, children }: DMDialogProps) {
   const { user } = useCurrentUser();
   const navigate = useNavigate();
-  const { mutate: createEvent, isPending } = useNostrPublish();
+  const { mutateAsync: sendMessage, isPending } = useSendDirectMessage();
   const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -26,28 +26,9 @@ export function DMDialog({ recipientPubkey, recipientName, children }: DMDialogP
   const handleSend = async () => {
     if (!user || !message.trim()) return;
 
+    if (isPending) return;
     try {
-      // Check if signer supports NIP-04 encryption
-      if (!user.signer.nip04) {
-        toast({
-          title: "Encryption Not Supported",
-          description: "Your signer doesn't support encrypted messages. Please upgrade your extension.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Encrypt the message
-      const encryptedContent = await user.signer.nip04.encrypt(recipientPubkey, message.trim());
-
-      // Create the DM event (kind 4)
-      createEvent({
-        kind: 4,
-        content: encryptedContent,
-        tags: [
-          ['p', recipientPubkey],
-        ],
-      });
+      await sendMessage({ recipient: recipientPubkey, message: message.trim() });
 
       toast({
         title: "📨 Message Sent!",
@@ -63,7 +44,7 @@ export function DMDialog({ recipientPubkey, recipientName, children }: DMDialogP
       console.error('Error sending DM:', error);
       toast({
         title: "Error",
-        description: "Failed to send message. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to send message. Please try again.",
         variant: "destructive",
       });
     }
@@ -106,6 +87,7 @@ export function DMDialog({ recipientPubkey, recipientName, children }: DMDialogP
           <div className="space-y-2">
             <Label htmlFor="message">Message</Label>
             <Textarea
+              disabled={isPending}
               id="message"
               placeholder="Type your message..."
               value={message}

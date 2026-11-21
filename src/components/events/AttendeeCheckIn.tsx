@@ -19,7 +19,7 @@ interface AttendeeCheckInProps {
 
 export function AttendeeCheckIn({ event, eventId }: AttendeeCheckInProps) {
   const { user } = useCurrentUser();
-  const { mutate: createEvent, isPending: isSubmitting } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isSubmitting } = useNostrPublish();
   const { toast } = useToast();
 
   const [checkInCode, setCheckInCode] = useState('');
@@ -174,7 +174,7 @@ export function AttendeeCheckIn({ event, eventId }: AttendeeCheckInProps) {
         tags.push(['location', location.trim()]);
       }
 
-      createEvent({
+      await createEvent({
         kind: 2073, // Custom attendance verification kind
         content: note.trim() || `Checked in to ${event.tags.find(([name]) => name === 'title')?.[1] || 'event'}`,
         tags,
@@ -182,7 +182,7 @@ export function AttendeeCheckIn({ event, eventId }: AttendeeCheckInProps) {
 
       toast({
         title: "🎉 Checked In Successfully!",
-        description: "Your attendance has been verified. Badge incoming!",
+        description: "Your check-in has been published.",
       });
 
       // Clear form

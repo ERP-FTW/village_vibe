@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useDirectMessages } from "@/hooks/useDirectMessages";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
+import { useSendDirectMessage } from "@/hooks/useSendDirectMessage";
 import { useAuthor } from "@/hooks/useAuthor";
 import { useToast } from "@/hooks/useToast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,9 +20,9 @@ interface ChatViewProps {
 
 export function ChatView({ otherUserPubkey }: ChatViewProps) {
   const { user } = useCurrentUser();
-  const { data: messages, isLoading, refetch } = useDirectMessages(otherUserPubkey);
+  const { data: messages, isLoading } = useDirectMessages(otherUserPubkey);
   const { data: otherUser } = useAuthor(otherUserPubkey);
-  const { mutate: createEvent, isPending: isSending } = useNostrPublish();
+  const { mutateAsync: sendMessage, isPending: isSending } = useSendDirectMessage();
   const { toast } = useToast();
   
   const [newMessage, setNewMessage] = useState("");
@@ -40,36 +40,18 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
   const handleSendMessage = async () => {
     if (!user || !newMessage.trim()) return;
 
+    if (isSending) return;
     try {
-      if (!user.signer.nip04) {
-        toast({
-          title: "Encryption Not Supported",
-          description: "Your signer doesn't support encrypted messages",
-          variant: "destructive",
-        });
-        return;
-      }
+      await sendMessage({ recipient: otherUserPubkey, message: newMessage.trim() });
 
-      const encryptedContent = await user.signer.nip04.encrypt(otherUserPubkey, newMessage.trim());
-
-      createEvent({
-        kind: 4,
-        content: encryptedContent,
-        tags: [['p', otherUserPubkey]],
-      });
-
-      setNewMessage("");
+      setNewMessage(current => current === newMessage ? "" : current);
       
-      // Refetch messages after a short delay to show the new message
-      setTimeout(() => {
-        refetch();
-      }, 1000);
 
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
         title: "Error",
-        description: "Failed to send message. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to send message. Please try again.",
         variant: "destructive",
       });
     }

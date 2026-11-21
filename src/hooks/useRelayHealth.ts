@@ -8,15 +8,15 @@ export function useRelayHealth() {
 
   return useQuery({
     queryKey: ['relay-health', config.relayUrl],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const startTime = Date.now();
       
       try {
         // Simple query to test relay responsiveness
-        const events = await nostr.query([{
+        await nostr.query([{
           kinds: [0],
           limit: 1,
-        }], { signal: AbortSignal.timeout(3000) });
+        }], { signal, relays: [config.relayUrl] });
 
         const latency = Date.now() - startTime;
 
@@ -38,7 +38,6 @@ export function useRelayHealth() {
         };
       }
     },
-    staleTime: 30000, // Check every 30 seconds
-    refetchInterval: 30000,
+    staleTime: 30000,
   });
 }

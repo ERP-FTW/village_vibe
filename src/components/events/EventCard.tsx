@@ -6,12 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EventModerationDialog } from "./EventModerationDialog";
 import { TribeName } from '@/components/tribes/TribeName';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 // import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar, MapPin, Clock, Users, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";

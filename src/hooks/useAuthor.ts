@@ -14,11 +14,11 @@ export function useAuthor(pubkey: string | undefined) {
 
       const [event] = await nostr.query(
         [{ kinds: [0], authors: [pubkey!], limit: 1 }],
-        { signal: AbortSignal.any([signal, AbortSignal.timeout(1500)]) },
+        { signal },
       );
 
       if (!event) {
-        throw new Error('No event found');
+        return {};
       }
 
       try {

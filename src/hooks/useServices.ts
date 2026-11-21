@@ -1,3 +1,6 @@
+import { useCurrentUser } from './useCurrentUser';
+import { useNostrPublish } from './useNostrPublish';
+import { readVillageFeed } from '@/lib/villageFeed';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -33,11 +36,13 @@ export interface ServiceFilters {
 export function useTribeServices(tribeId: string, filters: ServiceFilters = {}) {
   const { nostr } = useNostr();
 
+  const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['tribe-services', tribeId, filters],
+    queryKey: ['tribe-services', tribeId, queryFilters],
+    select: (events: NostrEvent[]) => search ? events.filter(event => event.content.toLowerCase().includes(search.toLowerCase())) : events,
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Parse tribe coordinates
       const [pubkey, dTag] = tribeId.split(':');
@@ -109,7 +114,7 @@ export function useService(serviceId: string, kind: 38857 | 30627) {
   return useQuery({
     queryKey: ['service', serviceId, kind],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Parse service coordinates (format: pubkey:d-identifier)
       const [pubkey, dTag] = serviceId.split(':');
@@ -137,11 +142,13 @@ export function useVillageServices(villageSlug: string, filters: ServiceFilters 
   const { nostr } = useNostr();
   const { preferences } = useVillagePreferences();
 
+  const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['village-services', villageSlug, filters],
+    queryKey: ['village-services', villageSlug, queryFilters, preferences.hiddenTribes],
+    select: (events: NostrEvent[]) => search ? events.filter(event => event.content.toLowerCase().includes(search.toLowerCase())) : events,
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Build filter for both offers and requests
       const kinds: number[] = [];
@@ -150,95 +157,8 @@ export function useVillageServices(villageSlug: string, filters: ServiceFilters 
 
       console.log('🏘️ Querying village services for:', villageSlug);
 
-      let villageEvents: NostrEvent[] = [];
-
-      // Strategy 1: Try to query with village tag filter first (more efficient if relay supports it)
-      if (villageSlug !== 'main') {
-        try {
-          console.log('🔍 Trying relay-level village filter for services:', villageSlug);
-          villageEvents = await nostr.query([{
-            kinds,
-            '#village': [villageSlug],
-            limit: filters.limit || 100,
-          }], { signal });
-          console.log('📦 Found services via relay filter:', villageEvents.length);
-        } catch {
-          console.log('⚠️ Relay-level village filter failed, falling back to client-side filtering');
-        }
-      }
-
-      // Strategy 2: If relay filtering didn't work or for main village, use client-side filtering
-      if (villageEvents.length === 0 || villageSlug === 'main') {
-        console.log('🔍 Using client-side filtering for village services');
-
-        // Get all services and filter client-side
-        const allEvents = await nostr.query([{
-          kinds,
-          limit: filters.limit || 200, // Increase limit for client-side filtering
-        }], { signal });
-
-        console.log('📦 Found all services for client-side filtering:', allEvents.length);
-
-        // Filter for services that have village tags
-        villageEvents = allEvents.filter(event => {
-          const villageTags = event.tags.filter(([name]) => name === 'village');
-
-          if (villageSlug === 'main') {
-            // For main village page, show all village content
-            return villageTags.length > 0;
-          } else {
-            // For specific village pages, filter by that village
-            return villageTags.some(([, value]) => value === villageSlug);
-          }
-        });
-
-        console.log('🏘️ Services with village tag (client-side):', villageEvents.length);
-      }
-
-      // Strategy 3: Also query for services with promotion labels and merge them
-      try {
-        console.log('🔍 Querying promotion labels for village services:', villageSlug);
-        const promotionLabels = await nostr.query([{
-          kinds: [1985], // Labels
-          '#l': ['village-promoted'],
-          limit: 100,
-        }], { signal });
-
-        console.log('📋 Found promotion labels:', promotionLabels.length);
-
-        // Extract service references from promotion labels
-        const promotedServiceRefs = promotionLabels
-          .map(label => label.tags.find(([name]) => name === 'a')?.[1])
-          .filter((ref): ref is string => Boolean(ref))
-          .filter(ref => ref.startsWith('38857:') || ref.startsWith('30627:'));
-
-        if (promotedServiceRefs.length > 0) {
-          console.log('📚 Found promoted service references:', promotedServiceRefs.length);
-
-          // Query the actual promoted services
-          const promotedServices = await nostr.query([{
-            kinds,
-            limit: 200,
-          }], { signal });
-
-          // Filter promoted services and merge with village events
-          const matchingPromotedServices = promotedServices.filter(service => {
-            const serviceRef = `${service.kind}:${service.pubkey}:${service.tags.find(([name]) => name === 'd')?.[1]}`;
-            return promotedServiceRefs.includes(serviceRef);
-          });
-
-          console.log('✨ Found matching promoted services:', matchingPromotedServices.length);
-
-          // Merge with existing village events (avoid duplicates)
-          const existingIds = new Set(villageEvents.map(e => e.id));
-          const newPromotedServices = matchingPromotedServices.filter(service => !existingIds.has(service.id));
-          villageEvents = [...villageEvents, ...newPromotedServices];
-
-          console.log('🔄 Merged promoted services, total:', villageEvents.length);
-        }
-      } catch (err) {
-        console.log('⚠️ Failed to query promotion labels:', err);
-      }
+      const villageEvents = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
+        [{ kinds, limit: filters.limit || 200 }], signal);
 
       // Apply additional filters
       let filteredEvents = villageEvents;
@@ -249,12 +169,6 @@ export function useVillageServices(villageSlug: string, filters: ServiceFilters 
         });
       }
 
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        filteredEvents = filteredEvents.filter(event => {
-          return event.content.toLowerCase().includes(searchLower);
-        });
-      }
 
       const validEvents = filteredEvents.filter(validateServiceEvent);
       console.log('✅ Valid village services after all strategies:', validEvents.length);
@@ -280,7 +194,7 @@ export function useServiceMatches(serviceId: string) {
   return useQuery({
     queryKey: ['service-matches', serviceId],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       const [pubkey, dTag] = serviceId.split(':');
       if (!pubkey || !dTag) return [];
@@ -301,8 +215,7 @@ export function useServiceMatches(serviceId: string) {
 
 // Hook to create or update a service
 export function useCreateService() {
-  const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       type: ServiceType;
@@ -358,24 +271,8 @@ export function useCreateService() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, dTag, kind, eventData };
-    },
-    onSuccess: (result, variables) => {
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({
-        queryKey: ['tribe-services']
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['village-services']
-      });
-      if (variables.villages) {
-        variables.villages.forEach(village => {
-          queryClient.invalidateQueries({
-            queryKey: ['village-services', village]
-          });
-        });
-      }
     },
   });
 }
@@ -383,7 +280,7 @@ export function useCreateService() {
 // Hook to promote a service to villages (creates label AND updates service with village tags)
 export function usePromoteServiceToVillages() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       service: NostrEvent;
@@ -438,6 +335,8 @@ export function usePromoteServiceToVillages() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publish(updatedService);
+      await publish(promotionLabel);
       return {
         serviceId,
         updatedService,
@@ -470,7 +369,7 @@ export function usePromoteServiceToVillages() {
 // Hook to create a service label (for moderation)
 export function useCreateServiceLabel() {
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       serviceId: string;
@@ -505,7 +404,7 @@ export function useCreateServiceLabel() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, eventData };
     },
     onSuccess: (_, variables) => {
@@ -526,8 +425,9 @@ export function useCreateServiceLabel() {
 
 // Hook to create a service match
 export function useCreateServiceMatch() {
+  const { user } = useCurrentUser();
   const queryClient = useQueryClient();
-
+  const { mutateAsync: publish } = useNostrPublish();
   return useMutation({
     mutationFn: async (data: {
       requestARef?: string;
@@ -535,6 +435,7 @@ export function useCreateServiceMatch() {
       type: 'offer_to_request' | 'request_to_offer' | 'admin_suggestion';
       message?: string;
     }) => {
+      if (!user) throw new Error('User is not logged in');
       // Generate a unique d tag for the match
       const dTag = `match-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -542,6 +443,7 @@ export function useCreateServiceMatch() {
       const tags: string[][] = [
         ['d', dTag],
         ['type', data.type],
+        ['by', user.pubkey],
         ['alt', 'Service match connecting community members'],
       ];
 
@@ -557,7 +459,7 @@ export function useCreateServiceMatch() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      // Note: This will be published using useNostrPublish in the component
+      await publish(eventData);
       return { ...data, dTag, eventData };
     },
     onSuccess: (_, variables) => {

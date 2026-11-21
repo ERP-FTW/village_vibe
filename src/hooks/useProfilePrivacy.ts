@@ -19,7 +19,7 @@ export function useProfilePrivacy(pubkey: string) {
   return useQuery({
     queryKey: ['profile-privacy', pubkey],
     queryFn: async (c) => {
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       const events = await nostr.query([
         {

@@ -50,7 +50,7 @@ export function useZaps(
     queryFn: async (c) => {
       if (!actualTarget) return [];
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Query for zap receipts for this specific event
       if (actualTarget.kind >= 30000 && actualTarget.kind < 40000) {

@@ -75,10 +75,11 @@ export function AdminMatchDialog({ offerEvent, requestEvent, children }: AdminMa
       suggestion: data.suggestion,
       notifyParties: data.notifyParties,
     }, {
-      onSuccess: () => {
+      onSuccess: (failed) => {
         toast({
-          title: 'Match suggested!',
-          description: data.notifyParties
+          title: 'Match recorded',
+          variant: failed ? 'destructive' : 'default',
+          description: failed ? `Could not deliver ${failed} of the two private notifications.` : data.notifyParties
             ? 'Both parties have been notified of the potential match.'
             : 'Match has been recorded for future reference.',
         });

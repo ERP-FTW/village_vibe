@@ -129,7 +129,7 @@ export function TribeServices({ tribeId, className, isModerator = false }: Tribe
     );
   }
 
-  if (error || !services) {
+  if (!services) {
     return (
       <div className={`${className}`}>
         <Card className="border-dashed">
@@ -137,9 +137,9 @@ export function TribeServices({ tribeId, className, isModerator = false }: Tribe
             <div className="max-w-sm mx-auto space-y-6">
               <div className="text-4xl">🤷‍♂️</div>
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold">No services found</h3>
+                <h3 className="text-lg font-semibold">{error ? 'Could not load services' : 'No services found'}</h3>
                 <p className="text-muted-foreground">
-                  No services available on this relay. Try switching relays?
+                  Try switching relays to load services.
                 </p>
               </div>
               <RelaySelector className="w-full" />

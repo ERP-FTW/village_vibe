@@ -5,7 +5,7 @@ import type { NostrEvent } from '@nostrify/nostrify';
 
 // Hook to moderate (hide) services
 export function useModerateService() {
-  const { mutate: publishEvent } = useNostrPublish();
+  const { mutateAsync: publishEvent } = useNostrPublish();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -29,11 +29,10 @@ export function useModerateService() {
         created_at: Math.floor(Date.now() / 1000),
       };
 
+      await publishEvent(labelEvent);
       return { labelEvent, serviceEvent: data.serviceEvent };
     },
-    onSuccess: (result) => {
-      // Publish the moderation label
-      publishEvent(result.labelEvent);
+    onSuccess: () => {
 
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['tribe-services'] });
@@ -51,7 +50,7 @@ export function useServiceModerationLabels(serviceEvents: NostrEvent[]) {
     queryFn: async (c) => {
       if (serviceEvents.length === 0) return [];
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(1500)]);
+      const { signal } = c;
 
       // Query for moderation labels that reference these services
       const events = await nostr.query([

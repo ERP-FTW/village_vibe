@@ -21,7 +21,7 @@ export function useDirectMessages(otherUserPubkey?: string) {
     queryFn: async (c) => {
       if (!user?.pubkey || !otherUserPubkey) return [];
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(5000)]);
+      const { signal } = c;
 
       // Query for DMs between the two users
       const events = await nostr.query([
@@ -109,7 +109,7 @@ export function useConversations() {
     queryFn: async (c) => {
       if (!user?.pubkey) return [];
 
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(3000)]);
+      const { signal } = c;
 
       // Get all DMs involving the current user
       const events = await nostr.query([

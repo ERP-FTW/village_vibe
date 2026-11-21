@@ -77,7 +77,7 @@ const StoryPage = () => {
     );
   }
 
-  if (error || !story) {
+  if (!story) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-2xl mx-auto">
@@ -86,9 +86,9 @@ const StoryPage = () => {
               <div className="max-w-sm mx-auto space-y-6">
                 <div className="text-4xl">📖</div>
                 <div className="space-y-2">
-                  <h3 className="text-lg font-semibold">Story not found</h3>
+                  <h3 className="text-lg font-semibold">{error ? 'Could not load story' : 'Story not found'}</h3>
                   <p className="text-muted-foreground">
-                    This story doesn't exist or isn't available on this relay
+                    {error ? "The relay lookup failed. Try switching relays." : "No matching story was found on the current relays."}
                   </p>
                 </div>
                 <RelaySelector className="w-full" />

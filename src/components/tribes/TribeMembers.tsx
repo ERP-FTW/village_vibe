@@ -1,7 +1,6 @@
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQueryClient } from '@tanstack/react-query';
 import { useAuthor } from "@/hooks/useAuthor";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNostrPublish } from "@/hooks/useNostrPublish";
@@ -27,8 +26,7 @@ interface MemberCardProps {
 function MemberCard({ pubkey, role, tribe, canManageMembers }: MemberCardProps) {
   const author = useAuthor(pubkey);
   const { user } = useCurrentUser();
-  const queryClient = useQueryClient();
-  const { mutate: createEvent, isPending: isUpdating } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isUpdating } = useNostrPublish();
   const { toast } = useToast();
   const [isEventCreator, setIsEventCreator] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
@@ -70,7 +68,7 @@ function MemberCard({ pubkey, role, tribe, canManageMembers }: MemberCardProps) 
         updatedTags.push(['p', pubkey, '', 'event_creator']);
       }
 
-      createEvent({
+      await createEvent({
         kind: 34550,
         content: tribe.content,
         tags: updatedTags,
@@ -102,7 +100,7 @@ function MemberCard({ pubkey, role, tribe, canManageMembers }: MemberCardProps) 
         !(tag[0] === 'p' && tag[1] === pubkey)
       );
 
-      createEvent({
+      await createEvent({
         kind: 34550,
         content: tribe.content,
         tags: updatedTags,
@@ -113,12 +111,6 @@ function MemberCard({ pubkey, role, tribe, canManageMembers }: MemberCardProps) 
         description: `${displayName} has been removed from the tribe`,
       });
 
-      // Invalidate related queries to refresh the UI
-      const tribeId = `${tribe.pubkey}:${tribe.tags.find(([name]) => name === 'd')?.[1]}`;
-      queryClient.invalidateQueries({ queryKey: ['tribe', tribeId] });
-      queryClient.invalidateQueries({ queryKey: ['tribe-member-count', tribeId] });
-      queryClient.invalidateQueries({ queryKey: ['my-tribes'] });
-      queryClient.invalidateQueries({ queryKey: ['public-tribes'] });
     } catch (error) {
       console.error('Error removing member:', error);
       toast({

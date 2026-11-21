@@ -233,15 +233,17 @@ const VillagePage = () => {
         {storyFeed && !storyFeed.promotionsComplete && (
           <div role="status" className="rounded-md border border-dashed p-3 text-sm text-muted-foreground flex flex-wrap items-center gap-3">
             <span>
-              Older promoted posts may not be shown: only the newest {promotionPages * LABEL_WINDOW} promotions were checked.
+              {storyFeed.promotionsCanReadFurther
+                ? `Older promoted posts may not be shown: only the newest ${promotionPages * LABEL_WINDOW} promotions were checked.`
+                : 'Some promoted posts may not be shown: a relay holds more promotions with the same timestamp than it can list.'}
             </span>
-            {promotionPages < MAX_PROMOTION_PAGES ? (
+            {storyFeed.promotionsCanReadFurther && (promotionPages < MAX_PROMOTION_PAGES ? (
               <Button size="sm" variant="outline" onClick={() => setPromotionPages(pages => Math.min(pages + 1, MAX_PROMOTION_PAGES))}>
                 Look further back
               </Button>
             ) : (
               <span>That is as far back as this page reads.</span>
-            )}
+            ))}
           </div>
         )}
 

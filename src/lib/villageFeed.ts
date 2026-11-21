@@ -10,10 +10,12 @@ export interface VillageFeed {
   /** Coordinates featured in the requested villages by a moderator of the content's tribe. */
   featured: Set<string>;
   /**
-   * False when promotion discovery hit a window limit: older promotions (and the content
-   * they bring in) may exist beyond what was read. Read further with `promotionPages`.
+   * False when promotion discovery may have missed promotions (and the content they bring
+   * in): a window was full, or a crowded second held more labels than a relay will list.
    */
   promotionsComplete: boolean;
+  /** Reading more windows (`promotionPages`) can find more; false once only skips remain. */
+  promotionsCanReadFurther: boolean;
 }
 
 export interface VillageFeedOptions {
@@ -46,16 +48,21 @@ interface LabelSource {
   /** More labels may exist before `until` (the window was full). */
   saturated: boolean;
   until?: number;
+  /** Paging had to step past a second holding more labels than a window: some can't be read. */
+  skipped?: boolean;
 }
 
 /** Window state after reading `labels` (newest first) for one source. */
-function windowState(scope: NostrFilter, labels: NostrEvent[], seenBefore: Set<string>, previousUntil?: number): LabelSource {
-  if (labels.length < LABEL_WINDOW) return { scope, saturated: false };
+function windowState(scope: NostrFilter, labels: NostrEvent[], seenBefore: Set<string>, previous?: LabelSource): LabelSource {
+  const skipped = previous?.skipped;
+  if (labels.length < LABEL_WINDOW) return { scope, saturated: false, skipped };
   const sorted = [...labels].sort((a, b) => b.created_at - a.created_at);
   const oldest = sorted[LABEL_WINDOW - 1].created_at;
-  // Inclusive paging; if a window brought nothing new, step past a crowded second
+  // Inclusive paging; if a window brought nothing new, step past the crowded second and
+  // remember that some of its labels couldn't be read (discovery can't be complete)
   const fresh = labels.some(label => !seenBefore.has(label.id));
-  return { scope, saturated: true, until: !fresh && previousUntil === oldest ? oldest - 1 : oldest };
+  if (!fresh && previous?.until === oldest) return { scope, saturated: true, until: oldest - 1, skipped: true };
+  return { scope, saturated: true, until: oldest, skipped };
 }
 
 /** Tribe references of a piece of content: exact coordinates, or the legacy d tag. */
@@ -206,7 +213,10 @@ export async function readVillageFeed(
   const isPromotion = (event: NostrEvent) => event.kind === 1985 && !!labelValue(event);
   const seen = new Set<string>();
   const indexedLabels = indexedRecords.filter(isPromotion);
-  const legacyAvailable = villages.length > 0 && legacy.status === 'fulfilled';
+  // A relay may answer an unsupported `#village` filter with nothing instead of rejecting
+  // it, so the legacy source only replaces the recent fallback once it has returned matches.
+  const legacyAvailable = villages.length > 0 && legacy.status === 'fulfilled'
+    && legacyRecords.some(event => isPromotion(event) || tagged(event));
   const sources = {
     indexed: windowState(indexedScope, indexedLabels.filter(label => label.tags.some(([name, value]) => name === 't' && topics.includes(value))), seen),
     // The recent window is the newest LABEL_WINDOW labels of the indexed REQ's results
@@ -231,11 +241,12 @@ export async function readVillageFeed(
       const key = source === sources.indexed ? 'indexed' : source === sources.legacy ? 'legacy' : 'recent';
       if (result.status === 'rejected') return; // stays full: still incomplete
       const labels = result.value.filter(isPromotion);
-      sources[key] = windowState(source.scope, labels, seen, source.until);
+      sources[key] = windowState(source.scope, labels, seen, source);
       labels.forEach(label => { if (!seen.has(label.id)) { seen.add(label.id); discovered.push(label); } });
     });
   }
-  const promotionsComplete = deciding().every(source => !source.saturated);
+  const promotionsComplete = deciding().every(source => !source.saturated && !source.skipped);
+  const promotionsCanReadFurther = deciding().some(source => source.saturated);
   records = [...records, ...discovered];
 
   const labelEvents = records.filter(event => event.kind === 1985 && labelValue(event));
@@ -313,5 +324,5 @@ export async function readVillageFeed(
       if ([...trust.featuredIn(event, related)].some(wantsVillage)) featured.add(address);
     }
   }
-  return { events, featured, promotionsComplete };
+  return { events, featured, promotionsComplete, promotionsCanReadFurther };
 }

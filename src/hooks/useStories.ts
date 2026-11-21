@@ -406,13 +406,13 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
   const { search, ...queryFilters } = filters;
   return useQuery({
     queryKey: ['multi-village-stories', villages, queryFilters, preferences.hiddenTribes],
-    select: (feed: { stories: NostrEvent[]; featured: string[]; promotionsComplete: boolean }) => ({ ...feed, stories: searchStories(feed.stories, search) }),
+    select: (feed: { stories: NostrEvent[]; featured: string[]; promotionsComplete: boolean; promotionsCanReadFurther: boolean }) => ({ ...feed, stories: searchStories(feed.stories, search) }),
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
       const { signal } = c;
 
 
-      const { events: villageEvents, featured, promotionsComplete } = await readVillageFeed(nostr, villages,
+      const { events: villageEvents, featured, promotionsComplete, promotionsCanReadFurther } = await readVillageFeed(nostr, villages,
         [{ kinds: [30023], limit: filters.limit || 200 }], signal, { promotionPages: filters.promotionPages });
 
       // Apply additional filters
@@ -437,8 +437,9 @@ export function useMultiVillageStories(villages: string[], filters: StoryFilters
         stories: uniqueEvents.sort((a, b) => b.created_at - a.created_at),
         // Coordinates a moderator of the story's tribe featured in these villages
         featured: [...featured],
-        // False when older promotions may exist beyond the windows read
+        // False when promotions may have been missed; whether more windows can help
         promotionsComplete,
+        promotionsCanReadFurther,
       };
     },
   });

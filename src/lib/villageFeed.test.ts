@@ -30,7 +30,7 @@ const noise = (count: number) => Array.from({ length: count }, (_, i) =>
   promotion(STRANGER, `30023:${STRANGER}:other-${i}`, ['westside'], 10_000 + i, true));
 
 /** NIP-01 matching over an in-memory store. Optionally rejects multi-letter tag filters. */
-function fakePool(store: NostrEvent[], opts: { rejectMultiLetterTags?: boolean } = {}) {
+function fakePool(store: NostrEvent[], opts: { rejectMultiLetterTags?: boolean; ignoreMultiLetterTags?: boolean } = {}) {
   const matches = (event: NostrEvent, filter: NostrFilter) => {
     if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
     if (filter.authors && !filter.authors.includes(event.pubkey)) return false;
@@ -50,6 +50,8 @@ function fakePool(store: NostrEvent[], opts: { rejectMultiLetterTags?: boolean }
       }
       const found = new Map<string, NostrEvent>();
       for (const filter of filters) {
+        // Some relays answer filters they don't support with nothing
+        if (opts.ignoreMultiLetterTags && Object.keys(filter).some(k => /^#.{2,}/.test(k))) continue;
         store.filter(e => matches(e, filter))
           .sort((a, b) => b.created_at - a.created_at)
           .slice(0, filter.limit ?? Infinity)
@@ -109,5 +111,32 @@ describe('village promotion discovery', () => {
     const feed = await read(pool);
     expect(feed.promotionsComplete).toBe(true);
     expect(feed.events.map(e => e.id)).toEqual([story.id]);
+  });
+
+  it('keeps the recent fallback when a relay answers #village with nothing', async () => {
+    const pool = fakePool(
+      [tribe, story, promotion(MODERATOR, `30023:${MEMBER}:seed-swap`, ['eastside'], 1_000, false), ...noise(LABEL_WINDOW + 50)],
+      { ignoreMultiLetterTags: true },
+    );
+
+    const first = await read(pool);
+    expect(first.events).toEqual([]);
+    expect(first.promotionsComplete).toBe(false);
+    expect(first.promotionsCanReadFurther).toBe(true);
+
+    const further = await read(pool, 2);
+    expect(further.events.map(e => e.id)).toEqual([story.id]);
+  });
+
+  it('stays incomplete after skipping a second that holds more labels than a window', async () => {
+    // 200 promotions in one second fill every window at that second; the story's is the 201st
+    const crowded = Array.from({ length: LABEL_WINDOW }, (_, i) =>
+      promotion(STRANGER, `30023:${STRANGER}:crowd-${i}`, ['eastside'], 1_000, true));
+    const pool = fakePool([tribe, story, ...crowded, promotion(MODERATOR, `30023:${MEMBER}:seed-swap`, ['eastside'], 1_000, true)]);
+
+    const feed = await read(pool, 4);
+    expect(feed.events).toEqual([]);
+    expect(feed.promotionsComplete).toBe(false);
+    expect(feed.promotionsCanReadFurther).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useDirectMessages } from "@/hooks/useDirectMessages";
+import { HistoryNotice } from "./HistoryNotice";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useRetryDirectMessage, useSendDirectMessage } from "@/hooks/useSendDirectMessage";
 import { DeliveryStatus } from "./DeliveryStatus";
@@ -22,7 +23,7 @@ interface ChatViewProps {
 
 export function ChatView({ otherUserPubkey }: ChatViewProps) {
   const { user } = useCurrentUser();
-  const { data: messages, isLoading } = useDirectMessages(otherUserPubkey);
+  const { data: messages, isLoading, history, loadOlder, isLoadingOlder } = useDirectMessages(otherUserPubkey);
   const { data: otherUser } = useAuthor(otherUserPubkey);
   const { mutateAsync: sendMessage, isPending: isSending } = useSendDirectMessage();
   const { mutate: retryDelivery, isPending: isRetrying, variables: retryingDelivery } = useRetryDirectMessage();
@@ -127,6 +128,7 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
               </div>
             ) : messages && messages.length > 0 ? (
               <div className="space-y-4">
+                <HistoryNotice history={history} onLoadOlder={loadOlder} loading={isLoadingOlder} />
                 {messages.map((message) => (
                   <div
                     key={message.id}
@@ -179,7 +181,8 @@ export function ChatView({ otherUserPubkey }: ChatViewProps) {
                 ))}
               </div>
             ) : (
-              <div className="flex items-center justify-center h-full">
+              <div className="flex flex-col items-center justify-center h-full gap-4">
+                <HistoryNotice history={history} onLoadOlder={loadOlder} loading={isLoadingOlder} />
                 <div className="text-center">
                   <div className="text-4xl mb-4">💬</div>
                   <h3 className="text-lg font-semibold mb-2">Start a conversation</h3>

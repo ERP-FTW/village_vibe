@@ -1,4 +1,5 @@
 import { useConversations } from "@/hooks/useDirectMessages";
+import { HistoryNotice } from "./HistoryNotice";
 import { useAuthor } from "@/hooks/useAuthor";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
@@ -68,7 +69,8 @@ function ConversationItem({ pubkey, lastMessageAt, isSelected, onClick }: Conver
 }
 
 export function ConversationsList({ selectedPubkey, onSelectConversation }: ConversationsListProps) {
-  const { data: conversations, isLoading } = useConversations();
+  const { data: conversations, isLoading, history, loadOlder, isLoadingOlder } = useConversations();
+  const notice = <HistoryNotice history={history} onLoadOlder={loadOlder} loading={isLoadingOlder} />;
 
   if (isLoading) {
     return (
@@ -92,6 +94,8 @@ export function ConversationsList({ selectedPubkey, onSelectConversation }: Conv
 
   if (!conversations || conversations.length === 0) {
     return (
+      <div className="space-y-3">
+      {notice}
       <Card className="border-dashed">
         <CardContent className="py-12 px-8 text-center">
           <div className="max-w-sm mx-auto space-y-4">
@@ -105,11 +109,13 @@ export function ConversationsList({ selectedPubkey, onSelectConversation }: Conv
           </div>
         </CardContent>
       </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {notice}
       {conversations.map((conversation) => (
         <ConversationItem
           key={conversation.pubkey}

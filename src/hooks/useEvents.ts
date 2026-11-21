@@ -6,6 +6,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
 import { useVillagePreferences } from './useVillagePreferences';
 import { useCurrentUser } from './useCurrentUser';
+import { useTribe } from './useTribes';
+import { MAX_FEED_AUTHORS, tribeEventAuthors } from '@/lib/tribes';
 
 // Event types for multi-type support (whitelisted values)
 export const EVENT_TYPES = [
@@ -51,29 +53,32 @@ export interface EventFilters {
 export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+  // Feed authors come from the tribe's member list: refetch whenever that definition changes.
+  const tribeQuery = useTribe(tribeId);
+  const tribeVersion = tribeQuery.data?.id ?? null;
 
   const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['tribe-events', tribeId, queryFilters, user?.pubkey],
+    queryKey: ['tribe-events', tribeId, tribeVersion, queryFilters, user?.pubkey],
     select: (events: NostrEvent[]) => applyEventFilters(events, { search }),
     staleTime: 60000, // Cache for 1 minute
     retry: 3, // Retry 3 times on failure
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+    enabled: tribeQuery.isFetched,
     queryFn: async (c) => {
       const { signal } = c;
 
       // Parse tribe coordinates
       const [pubkey, dTag] = tribeId.split(':');
-      if (!pubkey || !dTag) {
-        console.log('🔍 Invalid tribe ID format:', tribeId);
-        return [];
-      }
+      if (!pubkey || !dTag) return [];
 
-      console.log('🔍 Querying events for tribe:', { tribeId, pubkey, dTag });
+      // Events can be created by the owner, admins, moderators and event creators.
+      const tribe = tribeQuery.data ?? null;
+      const authors = tribe ? tribeEventAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
 
       const records = await nostr.query([
-        { kinds: [36959], authors: [pubkey], limit: filters.limit || 100 },
-        { kinds: [31923], authors: [pubkey], limit: 100 },
+        { kinds: [36959], authors, limit: filters.limit || 100 },
+        { kinds: [31923], authors, limit: 100 },
       ], { signal });
       let validEvents = records.filter(event => event.tags.some(([name, value]) =>
         (name === 'tribe' && (value === dTag || value === tribeId)) ||
@@ -81,8 +86,6 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
       ) && (event.kind === 36959 ? validateEnhancedEvent(event) : validateCalendarEvent(event)));
 
       validEvents = applyEventFilters(validEvents, queryFilters, user?.pubkey);
-
-      console.log('🎯 After filters:', validEvents.length);
 
       // Sort by start time (upcoming events first)
       return validEvents.sort((a, b) => {

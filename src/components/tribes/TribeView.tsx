@@ -1,6 +1,7 @@
 import { useTribe } from "@/hooks/useTribes";
 import { useTribeEvents } from "@/hooks/useEvents";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { canCreateTribeEvents, isTribeModerator } from "@/lib/tribes";
 import { TribeHeader } from "./TribeHeader";
 import { TribeEvents } from "./TribeEvents";
 import { TribeMembers } from "./TribeMembers";
@@ -26,13 +27,6 @@ export function TribeView({ tribeId }: TribeViewProps) {
   const { data: tribe, isLoading: tribeLoading, error: tribeError, failureCount, refetch: refetchTribe, isFetching: tribeFetching } = useTribe(tribeId);
   const { data: events, error: eventsError, isLoading: eventsLoading, refetch: refetchEvents, isFetching: eventsFetching } = useTribeEvents(tribeId);
 
-  console.log('🔄 Tribe query status:', {
-    tribeId,
-    isLoading: tribeLoading,
-    hasData: !!tribe,
-    failureCount,
-    error: tribeError
-  });
 
   if (tribeLoading) {
     return (
@@ -118,13 +112,8 @@ export function TribeView({ tribeId }: TribeViewProps) {
   }
 
   // Check if user is a moderator/admin
-  const userRole = tribe.tags.find(([name, pubkey, , role]) =>
-    name === 'p' && pubkey === user?.pubkey && (role === 'admin' || role === 'moderator')
-  )?.[3];
-
-  const canCreateEvents = !!userRole;
-  const isAdmin = userRole === 'admin';
-  const isModerator = userRole === 'moderator' || isAdmin;
+  const canCreateEvents = canCreateTribeEvents(tribe, user?.pubkey);
+  const isModerator = isTribeModerator(tribe, user?.pubkey);
 
   // Function to force refresh all tribe data
   const handleRefreshAll = async () => {

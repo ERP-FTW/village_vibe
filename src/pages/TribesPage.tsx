@@ -1,6 +1,7 @@
 import { useSeoMeta } from '@unhead/react';
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { usePublicTribes, useTribesCardStatuses } from "@/hooks/useTribes";
+import { tribeIdOf } from "@/lib/tribes";
 import { TribeCard } from "@/components/tribes/TribeCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,8 +12,7 @@ const TribesPage = () => {
   const { data: publicTribes, isLoading: publicTribesLoading, error } = usePublicTribes();
 
   const { user } = useCurrentUser();
-  const tribeIds = publicTribes?.map(tribe => `${tribe.pubkey}:${tribe.tags.find(([name]) => name === "d")?.[1]}`) ?? [];
-  const { data: statuses } = useTribesCardStatuses(tribeIds, user?.pubkey);
+  const { data: statuses } = useTribesCardStatuses(publicTribes ?? [], user?.pubkey);
 
   useSeoMeta({
     title: 'Browse Tribes - Village Vibe',
@@ -69,8 +69,8 @@ const TribesPage = () => {
 
         {hasPublicTribes ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {publicTribes.map((tribe, index) => (
-              <TribeCard key={tribe.id} tribe={tribe} requestStatus={statuses?.get(tribeIds[index]) ?? "none"} />
+            {publicTribes.map((tribe) => (
+              <TribeCard key={tribe.id} tribe={tribe} requestStatus={statuses?.get(tribeIdOf(tribe)) ?? "none"} />
             ))}
           </div>
         ) : (

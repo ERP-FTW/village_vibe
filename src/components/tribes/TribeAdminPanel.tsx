@@ -4,7 +4,9 @@ import { useNostr } from '@nostrify/react';
 import { useQuery } from '@tanstack/react-query';
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNostrPublish } from "@/hooks/useNostrPublish";
+import { useUpdateTribe } from "@/hooks/useTribesActions";
 import { useAuthor } from "@/hooks/useAuthor";
+import { dedupeMemberTags, isTribeCreator, isTribeModerator, tribeMembers, tribeModerators, withMemberRole } from "@/lib/tribes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,9 +29,10 @@ interface JoinRequestCardProps {
   onApprove: (request: NostrEvent) => void;
   onReject: (request: NostrEvent) => void;
   isProcessing: boolean;
+  canApprove: boolean;
 }
 
-function JoinRequestCard({ request, onApprove, onReject, isProcessing }: JoinRequestCardProps) {
+function JoinRequestCard({ request, onApprove, onReject, isProcessing, canApprove }: JoinRequestCardProps) {
   const author = useAuthor(request.pubkey);
   const metadata = author.data?.metadata;
   const displayName = metadata?.name || metadata?.display_name || genUserName(request.pubkey);
@@ -58,22 +61,26 @@ function JoinRequestCard({ request, onApprove, onReject, isProcessing }: JoinReq
             </div>
           </div>
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={() => onApprove(request)}
-              disabled={isProcessing}
-            >
-              {isProcessing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <UserCheck className="h-4 w-4" />
-              )}
-            </Button>
+            {canApprove && (
+              <Button
+                size="sm"
+                onClick={() => onApprove(request)}
+                disabled={isProcessing}
+                aria-label={`Approve ${displayName}`}
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <UserCheck className="h-4 w-4" />
+                )}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
               onClick={() => onReject(request)}
               disabled={isProcessing}
+              aria-label={`Reject ${displayName}`}
             >
               <UserX className="h-4 w-4" />
             </Button>
@@ -87,20 +94,20 @@ function JoinRequestCard({ request, onApprove, onReject, isProcessing }: JoinReq
 export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
   const { user } = useCurrentUser();
   const { nostr } = useNostr();
-  const { mutateAsync: createEvent, isPending: isProcessing } = useNostrPublish();
+  const { mutateAsync: createEvent, isPending: isRejecting } = useNostrPublish();
+  const { mutateAsync: updateTribe, isPending: isUpdating } = useUpdateTribe();
+  const isProcessing = isRejecting || isUpdating;
   const { toast } = useToast();
 
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
   const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
   const [isGeneratingQR, setIsGeneratingQR] = useState(false);
 
-  // Check if user is admin
-  const userRole = tribe.tags.find(([name, pubkey, , role]) =>
-    name === 'p' && pubkey === user?.pubkey && (role === 'admin' || role === 'moderator')
-  )?.[3];
-
-  const isAdmin = userRole === 'admin';
-  const isModerator = userRole === 'moderator' || isAdmin;
+  // Only the creator's key can change the tribe definition (approve, clean up members).
+  // Moderators can review and reject requests.
+  const isCreator = isTribeCreator(tribe, user?.pubkey);
+  const isModerator = isTribeModerator(tribe, user?.pubkey);
+  const moderators = new Set(tribeModerators(tribe));
 
   // Query for join requests and rejections
   const { data: joinRequests, isLoading: requestsLoading, refetch } = useQuery({
@@ -133,9 +140,9 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
           .map(([, pubkey]) => pubkey)
       );
 
-      // Get rejected pubkeys
+      // Get rejected pubkeys (only rejections issued by this tribe's moderators count)
       const rejectedPubkeys = new Set(
-        rejections.map(rejection => {
+        rejections.filter(rejection => moderators.has(rejection.pubkey)).map(rejection => {
           const rejectedPubkey = rejection.tags.find(([name]) => name === 'p')?.[1];
           return rejectedPubkey;
         }).filter(Boolean)
@@ -179,17 +186,11 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
         return;
       }
 
-      // Add user to tribe by updating tribe definition
-      const currentTags = [...tribe.tags];
-
-      // Add the user as a member (only if not already present)
-      currentTags.push(['p', request.pubkey, '', 'member']);
-
-      await createEvent({
-        kind: 34550, // Update tribe definition
-        content: tribe.content,
-        tags: currentTags,
+      await updateTribe({
+        tribe,
+        update: latest => ({ tags: withMemberRole(latest.tags, request.pubkey, tribeMembers(latest).get(request.pubkey) ?? 'member') }),
       });
+      await refetch();
 
       toast({
         title: "✅ Member Approved!",
@@ -200,7 +201,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
       console.error('Error approving member:', error);
       toast({
         title: "Error",
-        description: "Failed to approve member",
+        description: error instanceof Error ? error.message : "Failed to approve member",
         variant: "destructive",
       });
     } finally {
@@ -227,6 +228,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
         title: "❌ Request Rejected",
         description: "Join request has been rejected and removed",
       });
+      await refetch();
 
     } catch (error) {
       console.error('Error rejecting member:', error);
@@ -244,39 +246,8 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
     setIsCleaningDuplicates(true);
 
     try {
-      // Create a map to deduplicate members by pubkey, keeping highest role
-      const memberMap = new Map<string, [string, string, string, string]>();
-      const nonMemberTags: string[][] = [];
-
-      // Role hierarchy: admin > moderator > event_creator > member/undefined
-      const roleHierarchy = { admin: 4, moderator: 3, event_creator: 2, member: 1 };
-
-      tribe.tags.forEach(tag => {
-        if (tag[0] === 'p') {
-          const [name, pubkey, relay = '', role = ''] = tag;
-          const existing = memberMap.get(pubkey);
-
-          const currentRoleValue = roleHierarchy[role as keyof typeof roleHierarchy] || 1;
-          const existingRoleValue = existing ? (roleHierarchy[existing[3] as keyof typeof roleHierarchy] || 1) : 0;
-
-          if (!existing || currentRoleValue > existingRoleValue) {
-            memberMap.set(pubkey, [name, pubkey, relay, role]);
-          }
-        } else {
-          // Keep all non-member tags as-is
-          nonMemberTags.push(tag);
-        }
-      });
-
-      // Combine deduplicated member tags with other tags
-      const cleanedTags = [
-        ...nonMemberTags,
-        ...Array.from(memberMap.values())
-      ];
-
-      // Check if there were actually duplicates
       const originalMemberCount = tribe.tags.filter(([name]) => name === 'p').length;
-      const cleanedMemberCount = memberMap.size;
+      const cleanedMemberCount = dedupeMemberTags(tribe.tags).filter(([name]) => name === 'p').length;
 
       if (originalMemberCount === cleanedMemberCount) {
         toast({
@@ -286,11 +257,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
         return;
       }
 
-      await createEvent({
-        kind: 34550,
-        content: tribe.content,
-        tags: cleanedTags,
-      });
+      await updateTribe({ tribe, update: latest => ({ tags: dedupeMemberTags(latest.tags) }) });
 
       toast({
         title: "✅ Duplicates Cleaned!",
@@ -301,7 +268,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
       console.error('Error cleaning duplicates:', error);
       toast({
         title: "Error",
-        description: "Failed to clean duplicate members",
+        description: error instanceof Error ? error.message : "Failed to clean duplicate members",
         variant: "destructive",
       });
     } finally {
@@ -373,7 +340,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="requests">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
             <TabsTrigger value="requests" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Requests
@@ -416,6 +383,11 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
               </div>
             ) : joinRequests && joinRequests.length > 0 ? (
               <div className="space-y-4">
+                {!isCreator && (
+                  <p className="text-sm text-muted-foreground">
+                    Only the tribe creator can approve members. Moderators can reject requests.
+                  </p>
+                )}
                 {joinRequests.map((request) => (
                   <JoinRequestCard
                     key={request.id}
@@ -423,6 +395,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
                     onApprove={handleApprove}
                     onReject={handleReject}
                     isProcessing={processingRequest === request.id || isProcessing}
+                    canApprove={isCreator}
                   />
                 ))}
               </div>
@@ -504,6 +477,12 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
 
           <TabsContent value="settings" className="space-y-6">
             <div className="space-y-6">
+              {!isCreator && (
+                <p className="text-sm text-muted-foreground">
+                  Only the tribe creator can change villages and membership, because the tribe
+                  definition is signed with their key.
+                </p>
+              )}
               <div>
                 <h3 className="text-lg font-semibold mb-2">Village Associations</h3>
                 <p className="text-sm text-muted-foreground mb-4">
@@ -511,7 +490,7 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
                 </p>
 
                 <VillageAssociationDialog tribe={tribe}>
-                  <Button variant="outline">
+                  <Button variant="outline" disabled={!isCreator}>
                     <MapPin className="h-4 w-4 mr-2" />
                     Manage Villages
                   </Button>
@@ -521,12 +500,12 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
               <div>
                 <h3 className="text-lg font-semibold mb-2">Member Management</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Clean up duplicate member entries and manage tribe membership
+                  Clean up duplicate member entries
                 </p>
 
                 <Button
                   onClick={cleanDuplicateMembers}
-                  disabled={isCleaningDuplicates}
+                  disabled={isCleaningDuplicates || !isCreator}
                   variant="outline"
                 >
                   {isCleaningDuplicates ? (
@@ -537,14 +516,6 @@ export function TribeAdminPanel({ tribe, tribeId }: TribeAdminPanelProps) {
                   Clean Duplicate Members
                 </Button>
               </div>
-            </div>
-
-            <div className="text-center py-8 border-t">
-              <Settings className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-              <h3 className="font-semibold mb-1">More Settings</h3>
-              <p className="text-sm text-muted-foreground">
-                Additional tribe settings coming soon
-              </p>
             </div>
           </TabsContent>
         </Tabs>

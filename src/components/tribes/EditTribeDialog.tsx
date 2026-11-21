@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
+import { useUpdateTribe } from "@/hooks/useTribesActions";
+import { isTribeCreator, withSingleTags } from "@/lib/tribes";
 import { useUploadFile } from "@/hooks/useUploadFile";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -21,14 +22,13 @@ interface EditTribeDialogProps {
 
 export function EditTribeDialog({ children, tribe }: EditTribeDialogProps) {
   const { user } = useCurrentUser();
-  const { mutateAsync: createEvent, isPending: isUpdating } = useNostrPublish();
+  const { mutateAsync: updateTribe, isPending: isUpdating } = useUpdateTribe();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
   const { toast } = useToast();
   
   const [open, setOpen] = useState(false);
 
   // Get current tribe data
-  const dTag = tribe.tags.find(([name]) => name === 'd')?.[1] || '';
   const currentName = tribe.tags.find(([name]) => name === 'name')?.[1] || '';
   const currentDescription = tribe.tags.find(([name]) => name === 'description')?.[1] || '';
   const currentLocation = tribe.tags.find(([name]) => name === 'location')?.[1] || '';
@@ -45,13 +45,9 @@ export function EditTribeDialog({ children, tribe }: EditTribeDialogProps) {
     isOpen: isCurrentlyOpen,
   });
 
-  // Check if user is admin
-  const userRole = tribe.tags.find(([name, pubkey, , role]) => 
-    name === 'p' && pubkey === user?.pubkey && role === 'admin'
-  )?.[3];
-
-  if (userRole !== 'admin') {
-    return null; // Only admins can edit
+  // Only the creator's key can replace the tribe definition
+  if (!isTribeCreator(tribe, user?.pubkey)) {
+    return null;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -67,45 +63,23 @@ export function EditTribeDialog({ children, tribe }: EditTribeDialogProps) {
     }
 
     try {
-      // Preserve existing tags and update only the changed ones
-      const newTags = tribe.tags.filter(([name]) => 
-        !['name', 'description', 'location', 'image', 'public', 'private', 'open', 'closed'].includes(name)
-      );
-
-      // Add updated metadata tags
-      newTags.push(['d', dTag]);
-      newTags.push(['name', formData.name.trim()]);
-      newTags.push(['t', 'tribe']);
-
-      if (formData.description.trim()) {
-        newTags.push(['description', formData.description.trim()]);
-      }
-
-      if (formData.location.trim()) {
-        newTags.push(['location', formData.location.trim()]);
-      }
-
-      if (formData.image.trim()) {
-        newTags.push(['image', formData.image.trim()]);
-      }
-
-      // Add visibility and access tags
-      if (formData.isPublic) {
-        newTags.push(['public']);
-      } else {
-        newTags.push(['private']);
-      }
-
-      if (formData.isOpen) {
-        newTags.push(['open']);
-      } else {
-        newTags.push(['closed']);
-      }
-
-      await createEvent({
-        kind: 34550, // Community Definition (NIP-72)
-        content: formData.description.trim(),
-        tags: newTags,
+      const flags = ['public', 'private', 'open', 'closed'];
+      await updateTribe({
+        tribe,
+        update: latest => ({
+          content: formData.description.trim(),
+          tags: [
+            ...withSingleTags(latest.tags.filter(([name]) => !flags.includes(name)), {
+              name: formData.name.trim(),
+              description: formData.description.trim() || null,
+              location: formData.location.trim() || null,
+              image: formData.image.trim() || null,
+            }).filter(([name, value]) => !(name === 't' && value === 'tribe')),
+            ['t', 'tribe'],
+            [formData.isPublic ? 'public' : 'private'],
+            [formData.isOpen ? 'open' : 'closed'],
+          ],
+        }),
       });
 
       toast({
@@ -118,7 +92,7 @@ export function EditTribeDialog({ children, tribe }: EditTribeDialogProps) {
       console.error('Error updating tribe:', error);
       toast({
         title: "Error",
-        description: "Failed to update tribe. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to update tribe. Please try again.",
         variant: "destructive",
       });
     }

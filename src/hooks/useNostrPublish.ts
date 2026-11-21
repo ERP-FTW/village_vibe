@@ -24,7 +24,9 @@ function affectedQueries(event: NostrEvent): QueryKey[] {
       ['tribe-services'], ['village-services']];
     case 34871: return [['service-matches']];
     case 34550: return [['tribe', coordinate], ['public-tribes'], ['my-tribes'], ['tribe-name', tag('d')],
-      ['tribe-member-count', coordinate], ['join-requests', coordinate]];
+      ['join-requests', coordinate],
+      // Membership decides whose content the tribe feeds include.
+      ['tribe-events', coordinate], ['tribe-stories', coordinate], ['tribe-services', coordinate]];
     case 30627:
     case 38857: return [['service', coordinate], ['tribe-services'], ['village-services']];
     case 31923:

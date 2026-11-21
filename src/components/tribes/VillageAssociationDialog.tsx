@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNostrPublish } from '@/hooks/useNostrPublish';
+import { useUpdateTribe } from '@/hooks/useTribesActions';
+import { slugifyVillage } from '@/lib/villages';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
   Dialog,
@@ -26,7 +27,7 @@ interface VillageAssociationDialogProps {
 export function VillageAssociationDialog({ children, tribe }: VillageAssociationDialogProps) {
   const { user } = useCurrentUser();
   const { toast } = useToast();
-  const { mutateAsync: publishEvent, isPending } = useNostrPublish();
+  const { mutateAsync: updateTribe, isPending } = useUpdateTribe();
   
   const [open, setOpen] = useState(false);
   const [newVillage, setNewVillage] = useState('');
@@ -44,7 +45,7 @@ export function VillageAssociationDialog({ children, tribe }: VillageAssociation
   }, [tribe]);
 
   const addVillage = () => {
-    const villageSlug = newVillage.trim().toLowerCase().replace(/\s+/g, '-');
+    const villageSlug = slugifyVillage(newVillage);
     if (villageSlug && !villages.includes(villageSlug)) {
       setVillages([...villages, villageSlug]);
       setNewVillage('');
@@ -66,25 +67,14 @@ export function VillageAssociationDialog({ children, tribe }: VillageAssociation
     }
 
     try {
-      // Create updated tribe event with new village tags
-      const dTag = tribe.tags.find(([name]) => name === 'd')?.[1];
-      if (!dTag) {
-        throw new Error('Tribe missing d tag');
-      }
-
-      // Build new tags array, replacing village tags
-      const newTags = tribe.tags
-        .filter(([name]) => name !== 'village') // Remove existing village tags
-        .concat(villages.map(village => ['village', village])); // Add new village tags
-
-      const updatedTribe = {
-        kind: 34550,
-        content: tribe.content,
-        tags: newTags,
-        created_at: Math.floor(Date.now() / 1000),
-      };
-
-      await publishEvent(updatedTribe);
+      await updateTribe({
+        tribe,
+        update: latest => ({
+          tags: latest.tags
+            .filter(([name]) => name !== 'village')
+            .concat(villages.map(village => ['village', village])),
+        }),
+      });
       toast({
         title: "Villages updated",
         description: `Tribe is now associated with ${villages.length} village(s).`,
@@ -94,7 +84,7 @@ export function VillageAssociationDialog({ children, tribe }: VillageAssociation
       console.error('Village association error:', error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred.",
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
         variant: "destructive",
       });
     }

@@ -3,7 +3,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuthor } from "@/hooks/useAuthor";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useNostrPublish } from "@/hooks/useNostrPublish";
+import { useUpdateTribe } from "@/hooks/useTribesActions";
+import { isTribeCreator, tribeMembers, withMemberRole } from "@/lib/tribes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,101 +26,47 @@ interface MemberCardProps {
 
 function MemberCard({ pubkey, role, tribe, canManageMembers }: MemberCardProps) {
   const author = useAuthor(pubkey);
-  const { user } = useCurrentUser();
-  const { mutateAsync: createEvent, isPending: isUpdating } = useNostrPublish();
+  const { mutateAsync: updateTribe, isPending: isUpdating } = useUpdateTribe();
   const { toast } = useToast();
-  const [isEventCreator, setIsEventCreator] = useState(false);
-  const [isRemoving, setIsRemoving] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'role' | 'remove' | null>(null);
 
   const metadata = author.data?.metadata;
   const displayName = metadata?.name || metadata?.display_name || genUserName(pubkey);
   const about = metadata?.about;
 
-  // Check if this member can create events (has event_creator role)
-  const memberTags = tribe.tags.filter(([name, memberPubkey]) => name === 'p' && memberPubkey === pubkey);
-  const hasEventCreatorRole = memberTags.some(([, , , memberRole]) => memberRole === 'event_creator');
+  const hasEventCreatorRole = role === 'event_creator';
 
-  const toggleEventCreator = async () => {
-    if (!user || !canManageMembers) return;
-
+  const changeMember = async (action: 'role' | 'remove') => {
+    if (!canManageMembers) return;
+    setPendingAction(action);
     try {
-      setIsEventCreator(true);
-
-      // Get current tribe data
-      const _dTag = tribe.tags.find(([name]) => name === 'd')?.[1] || '';
-
-      // Update tribe with new member roles
-      const updatedTags = tribe.tags.map(tag => {
-        // If this is a p tag for this member
-        if (tag[0] === 'p' && tag[1] === pubkey) {
-          if (hasEventCreatorRole) {
-            // Remove event_creator role if they have it
-            return tag[3] === 'event_creator' ? [tag[0], tag[1], tag[2]] : tag;
-          } else {
-            // Add event_creator role if they don't have it
-            return [tag[0], tag[1], tag[2] || '', 'event_creator'];
-          }
-        }
-        return tag;
+      await updateTribe({
+        tribe,
+        update: latest => ({
+          tags: withMemberRole(
+            latest.tags,
+            pubkey,
+            action === 'remove' ? null : (tribeMembers(latest).get(pubkey) === 'event_creator' ? 'member' : 'event_creator'),
+          ),
+        }),
       });
-
-      // If member doesn't have event_creator role and no existing p tag found, add one
-      if (!hasEventCreatorRole && !memberTags.some(([, , , memberRole]) => memberRole === 'event_creator')) {
-        updatedTags.push(['p', pubkey, '', 'event_creator']);
-      }
-
-      await createEvent({
-        kind: 34550,
-        content: tribe.content,
-        tags: updatedTags,
-      });
-
       toast({
-        title: hasEventCreatorRole ? "Event Creator Role Removed" : "Event Creator Role Added",
-        description: `${displayName} ${hasEventCreatorRole ? 'can no longer' : 'can now'} create events for this tribe`,
+        title: action === 'remove'
+          ? 'Member removed'
+          : hasEventCreatorRole ? 'Event creator role removed' : 'Event creator role added',
+        description: action === 'remove'
+          ? `${displayName} has been removed from the tribe`
+          : `${displayName} ${hasEventCreatorRole ? 'can no longer' : 'can now'} create events for this tribe`,
       });
     } catch (error) {
-      console.error('Error updating member role:', error);
+      console.error('Error updating member:', error);
       toast({
         title: "Error",
-        description: "Failed to update member role. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to update member. Please try again.",
         variant: "destructive",
       });
     } finally {
-      setIsEventCreator(false);
-    }
-  };
-
-  const removeMember = async () => {
-    if (!user || !canManageMembers) return;
-
-    setIsRemoving(true);
-    try {
-      // Remove all p tags for this member from the tribe
-      const updatedTags = tribe.tags.filter(tag =>
-        !(tag[0] === 'p' && tag[1] === pubkey)
-      );
-
-      await createEvent({
-        kind: 34550,
-        content: tribe.content,
-        tags: updatedTags,
-      });
-
-      toast({
-        title: "Member Removed",
-        description: `${displayName} has been removed from the tribe`,
-      });
-
-    } catch (error) {
-      console.error('Error removing member:', error);
-      toast({
-        title: "Error",
-        description: "Failed to remove member. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsRemoving(false);
+      setPendingAction(null);
     }
   };
 
@@ -198,10 +145,10 @@ function MemberCard({ pubkey, role, tribe, canManageMembers }: MemberCardProps) 
                   <Button
                     variant={hasEventCreatorRole ? "destructive" : "default"}
                     size="sm"
-                    onClick={toggleEventCreator}
-                    disabled={isUpdating || isEventCreator || isRemoving}
+                    onClick={() => changeMember('role')}
+                    disabled={isUpdating}
                   >
-                    {isUpdating || isEventCreator ? (
+                    {pendingAction === 'role' ? (
                       <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                     ) : (
                       <Calendar className="h-3 w-3 mr-1" />
@@ -212,10 +159,10 @@ function MemberCard({ pubkey, role, tribe, canManageMembers }: MemberCardProps) 
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={removeMember}
-                    disabled={isUpdating || isEventCreator || isRemoving}
+                    onClick={() => changeMember('remove')}
+                    disabled={isUpdating}
                   >
-                    {isRemoving ? (
+                    {pendingAction === 'remove' ? (
                       <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                     ) : (
                       <UserMinus className="h-3 w-3 mr-1" />
@@ -235,39 +182,17 @@ function MemberCard({ pubkey, role, tribe, canManageMembers }: MemberCardProps) 
 export function TribeMembers({ tribe }: TribeMembersProps) {
   const { user } = useCurrentUser();
 
-  // Check if current user can manage members (is admin or tribe creator)
-  const isCreator = user?.pubkey === tribe.pubkey;
-  const isAdmin = user && tribe.tags.some(([name, pubkey, , role]) =>
-    name === 'p' && pubkey === user.pubkey && role === 'admin'
-  );
-  const canManageMembers = isCreator || isAdmin;
+  // Only the creator's key can change the tribe definition that holds the member list.
+  const canManageMembers = isTribeCreator(tribe, user?.pubkey);
+  const memberMap = tribeMembers(tribe);
 
-  // Extract unique members with their roles (handle duplicates by keeping the highest role)
-  const memberMap = new Map<string, { pubkey: string; role?: string }>();
-
-  // Process all p tags and keep the highest role for each unique pubkey
-  tribe.tags
-    .filter(([name]) => name === 'p')
-    .forEach(([, pubkey, , role]) => {
-      const existing = memberMap.get(pubkey);
-
-      // Role hierarchy: admin > moderator > event_creator > member/undefined
-      const roleHierarchy = { admin: 4, moderator: 3, event_creator: 2, member: 1 };
-      const currentRoleValue = roleHierarchy[role as keyof typeof roleHierarchy] || 1;
-      const existingRoleValue = existing?.role ? (roleHierarchy[existing.role as keyof typeof roleHierarchy] || 1) : 0;
-
-      if (!existing || currentRoleValue > existingRoleValue) {
-        memberMap.set(pubkey, { pubkey, role });
-      }
-    });
-
-  const members = Array.from(memberMap.values());
+  const members = Array.from(memberMap, ([pubkey, role]) => ({ pubkey, role }));
 
   // Separate by role for better organization
   const admins = members.filter(m => m.role === 'admin');
   const moderators = members.filter(m => m.role === 'moderator');
   const eventCreators = members.filter(m => m.role === 'event_creator');
-  const regularMembers = members.filter(m => !m.role || !['admin', 'moderator', 'event_creator'].includes(m.role));
+  const regularMembers = members.filter(m => m.role === 'member');
 
   if (members.length === 0) {
     return (

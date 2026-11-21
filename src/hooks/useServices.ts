@@ -5,6 +5,8 @@ import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent } from '@nostrify/nostrify';
 import { useVillagePreferences } from './useVillagePreferences';
+import { useTribe } from './useTribes';
+import { MAX_FEED_AUTHORS, tribeMemberAuthors } from '@/lib/tribes';
 
 // Service categories
 export const SERVICE_CATEGORIES = [
@@ -35,12 +37,16 @@ export interface ServiceFilters {
 // Hook to get services for a specific tribe
 export function useTribeServices(tribeId: string, filters: ServiceFilters = {}) {
   const { nostr } = useNostr();
+  // Feed authors come from the tribe's member list: refetch whenever that definition changes.
+  const tribeQuery = useTribe(tribeId);
+  const tribeVersion = tribeQuery.data?.id ?? null;
 
   const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['tribe-services', tribeId, queryFilters],
+    queryKey: ['tribe-services', tribeId, tribeVersion, queryFilters],
     select: (events: NostrEvent[]) => search ? events.filter(event => event.content.toLowerCase().includes(search.toLowerCase())) : events,
     staleTime: 30000, // Consider data fresh for 30 seconds
+    enabled: tribeQuery.isFetched,
     queryFn: async (c) => {
       const { signal } = c;
 
@@ -53,32 +59,12 @@ export function useTribeServices(tribeId: string, filters: ServiceFilters = {}) 
       if (!filters.type || filters.type === 'offer') kinds.push(38857);
       if (!filters.type || filters.type === 'request') kinds.push(30627);
 
-      console.log('🔍 Querying services for tribe:', { tribeId, dTag, kinds });
-
-      // Use the same approach as the debug component that works
-      const authorEvents = await nostr.query([{
-        kinds,
-        authors: [pubkey],
-        limit: 100,
-      }], { signal });
-
-      console.log('📦 Found events by author:', authorEvents.length);
-
-      // Filter by tribe tag client-side, but fallback to showing all author's services
-      let tribeEvents = authorEvents.filter(event => {
-        const tribeTags = event.tags.filter(([name]) => name === 'tribe');
-        const matchesTribe = tribeTags.some(([, value]) => value === dTag);
-        return matchesTribe;
-      });
-
-      console.log('🏘️ Events matching exact tribe:', tribeEvents.length);
-
-      // If no services match the exact tribe, show all services from this author
-      // This helps when services were created for different tribes by the same author
-      if (tribeEvents.length === 0) {
-        tribeEvents = authorEvents;
-        console.log('📋 Falling back to all author services:', tribeEvents.length);
-      }
+      // Any member can offer or request services in their tribe.
+      const tribe = tribeQuery.data ?? null;
+      const authors = tribe ? tribeMemberAuthors(tribe).slice(0, MAX_FEED_AUTHORS) : [pubkey];
+      const records = await nostr.query([{ kinds, authors, limit: 200 }], { signal });
+      const tribeEvents = records.filter(event =>
+        event.tags.some(([name, value]) => name === 'tribe' && value === dTag));
 
       // Apply additional filters
       let filteredEvents = tribeEvents;

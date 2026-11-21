@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useJoinTribe } from "@/hooks/useTribesActions";
-import { useNostr } from '@nostrify/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { TribeRequestStatus } from "@/hooks/useTribes";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -19,7 +18,6 @@ interface TribeCardProps {
 
 export function TribeCard({ tribe, requestStatus }: TribeCardProps) {
   const { user } = useCurrentUser();
-  const { nostr } = useNostr();
   const queryClient = useQueryClient();
   const { joinTribe, isPending: isJoining } = useJoinTribe();
 
@@ -51,24 +49,10 @@ export function TribeCard({ tribe, requestStatus }: TribeCardProps) {
   const hasExistingRequest = requestStatus === 'pending';
   const hasBeenRejected = requestStatus === 'rejected';
 
-  // Prefetch tribe data on hover for instant loading
+  // Seed the tribe page cache with the definition we already have, so it opens instantly.
   const prefetchTribe = () => {
-    queryClient.prefetchQuery({
-      queryKey: ['tribe', tribeId],
-      queryFn: async ({ signal }) => {
-        const [pubkey, d] = tribeId.split(':');
-        const events = await nostr.query([
-          {
-            kinds: [34550],
-            authors: [pubkey],
-            '#d': [d],
-            limit: 1,
-          }
-        ], { signal });
-        return events[0] || null;
-      },
-      staleTime: 5 * 60 * 1000,
-    });
+    queryClient.setQueryData<NostrEvent | null>(['tribe', tribeId], current =>
+      current && current.created_at >= tribe.created_at ? current : tribe);
   };
 
   const getJoinButtonContent = () => {

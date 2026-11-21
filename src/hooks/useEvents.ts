@@ -1,6 +1,7 @@
 import { useSendDirectMessage } from './useSendDirectMessage';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { villageList } from '@/lib/villages';
 import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -222,21 +223,22 @@ export function useUserRSVP(eventId: string, userPubkey?: string) {
 }
 
 // Hook to get events by village
-export function useVillageEvents(villageSlug: string, filters: EventFilters = {}) {
+export function useVillageEvents(villageSlugOrList: string | string[], filters: EventFilters = {}) {
   const { nostr } = useNostr();
   const { preferences } = useVillagePreferences();
   const { user } = useCurrentUser();
 
   const { search, ...queryFilters } = filters;
+  const villages = villageList(villageSlugOrList);
   return useQuery({
-    queryKey: ['village-events', villageSlug, queryFilters, preferences.hiddenTribes, user?.pubkey],
+    queryKey: ['village-events', villages, queryFilters, preferences.hiddenTribes, user?.pubkey],
     select: (events: NostrEvent[]) => applyEventFilters(events, { search }),
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
       const { signal } = c;
 
 
-      const { events: villageEvents } = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
+      const { events: villageEvents } = await readVillageFeed(nostr, villages,
         [{ kinds: [36959], limit: filters.limit || 150 }, { kinds: [31923], limit: 50 }], signal);
 
       // Validate events

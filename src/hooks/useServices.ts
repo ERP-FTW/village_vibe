@@ -1,10 +1,12 @@
 import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { readVillageFeed } from '@/lib/villageFeed';
+import { villageList } from '@/lib/villages';
 import { belongsToTribe, tribeCoordinate, tribeLinkTags, villagesOf, withVillageTags } from '@/lib/contentTags';
 import { useNostr } from '@nostrify/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { NostrEvent } from '@nostrify/nostrify';
+import type { NostrEvent, NStore } from '@nostrify/nostrify';
+import { batcherPerStore, createBatcher } from '@/lib/batcher';
 import { useVillagePreferences } from './useVillagePreferences';
 import { useTribe } from './useTribes';
 import { MAX_FEED_AUTHORS, tribeMemberAuthors, tribeModerators } from '@/lib/tribes';
@@ -99,13 +101,14 @@ export function useTribeServices(tribeId: string, filters: ServiceFilters = {}) 
 }
 
 // Hook to get services by village
-export function useVillageServices(villageSlug: string, filters: ServiceFilters = {}) {
+export function useVillageServices(villageSlugOrList: string | string[], filters: ServiceFilters = {}) {
   const { nostr } = useNostr();
   const { preferences } = useVillagePreferences();
 
   const { search, ...queryFilters } = filters;
+  const villages = villageList(villageSlugOrList);
   return useQuery({
-    queryKey: ['village-services', villageSlug, queryFilters, preferences.hiddenTribes],
+    queryKey: ['village-services', villages, queryFilters, preferences.hiddenTribes],
     select: (events: NostrEvent[]) => search ? events.filter(event => event.content.toLowerCase().includes(search.toLowerCase())) : events,
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
@@ -117,7 +120,7 @@ export function useVillageServices(villageSlug: string, filters: ServiceFilters 
       if (!filters.type || filters.type === 'request') kinds.push(30627);
 
 
-      const { events: villageEvents } = await readVillageFeed(nostr, villageSlug === 'main' ? [] : [villageSlug],
+      const { events: villageEvents } = await readVillageFeed(nostr, villages,
         [{ kinds, limit: filters.limit || 200 }], signal);
 
       // Apply additional filters
@@ -187,7 +190,8 @@ export function useCreateService() {
       if (data.time) tags.push(['time', data.time]);
       if (data.rate) tags.push(['rate', data.rate]);
       if (data.radius) tags.push(['radius', data.radius]);
-      if (data.expires) tags.push(['expires', data.expires.toString()]);
+      // NIP-40: relays that support it drop the event after this time
+      if (data.expires) tags.push(['expiration', data.expires.toString()]);
 
       // Add village tags (legacy + indexed)
       tags.splice(0, tags.length, ...withVillageTags(tags, data.villages ?? []));
@@ -357,6 +361,40 @@ export function useCreateServiceLabel() {
   });
 }
 
+/** Response lookups for many service cards are merged into one request. */
+const responseLoader = batcherPerStore((nostr: NStore) => createBatcher<string, NostrEvent[]>(async (coordinates) => {
+  const wanted = new Set(coordinates);
+  const matches = (await nostr.query([{ kinds: [34871], '#a': coordinates, limit: coordinates.length * 50 }]))
+    .filter(validateServiceMatchEvent);
+  const byService = new Map<string, NostrEvent[]>(coordinates.map(coordinate => [coordinate, []]));
+  for (const match of matches) {
+    for (const [name, address] of match.tags) {
+      if (name === 'a' && wanted.has(address)) byService.get(address)?.push(match);
+    }
+  }
+  return byService;
+}));
+
+/** Responses (kind 34871 matches) to a service, one per responder (latest). */
+export function useServiceMatches(service: NostrEvent | undefined, enabled = true) {
+  const { nostr } = useNostr();
+  const dTag = service?.tags.find(([name]) => name === 'd')?.[1];
+  const coordinate = service && dTag ? `${service.kind}:${service.pubkey}:${dTag}` : '';
+  return useQuery({
+    queryKey: ['service-matches', coordinate.split(':').slice(1).join(':')],
+    enabled: enabled && !!coordinate,
+    queryFn: async () => {
+      const matches = (await responseLoader(nostr)(coordinate)) ?? [];
+      const latest = new Map<string, NostrEvent>();
+      for (const match of matches) {
+        const current = latest.get(match.pubkey);
+        if (!current || match.created_at > current.created_at) latest.set(match.pubkey, match);
+      }
+      return [...latest.values()].sort((a, b) => b.created_at - a.created_at);
+    },
+  });
+}
+
 // Hook to create a service match
 export function useCreateServiceMatch() {
   const { user } = useCurrentUser();
@@ -370,8 +408,9 @@ export function useCreateServiceMatch() {
       message?: string;
     }) => {
       if (!user) throw new Error('User is not logged in');
-      // Generate a unique d tag for the match
-      const dTag = `match-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const refs = [data.requestARef, data.offerARef].filter((ref): ref is string => !!ref);
+      // One match per person per service pairing: responding twice replaces the first.
+      const dTag = `match-${refs.slice().sort().join('|')}-${user.pubkey}`;
 
       // Build tags array
       const tags: string[][] = [
@@ -381,9 +420,10 @@ export function useCreateServiceMatch() {
         ['alt', 'Service match connecting community members'],
       ];
 
-      // Add service references
-      if (data.requestARef) tags.push(['a', data.requestARef]);
-      if (data.offerARef) tags.push(['a', data.offerARef]);
+      // Add service references, and notify their authors
+      refs.forEach(ref => tags.push(['a', ref]));
+      [...new Set(refs.map(ref => ref.split(':')[1]).filter(pubkey => pubkey && pubkey !== user.pubkey))]
+        .forEach(pubkey => tags.push(['p', pubkey]));
 
       // Create the event
       const eventData = {
@@ -425,6 +465,10 @@ export function validateServiceEvent(event: NostrEvent): boolean {
 
   // Required tags
   if (!dTag || !tribeTag || !categoryTag || !locationTag) return false;
+
+  // Expired services (NIP-40 `expiration`, or the legacy `expires` tag) are no longer shown
+  const expiresAt = Number(event.tags.find(([name]) => name === 'expiration' || name === 'expires')?.[1]);
+  if (expiresAt && expiresAt * 1000 < Date.now()) return false;
 
   // Validate category
   if (!SERVICE_CATEGORIES.includes(categoryTag as ServiceCategory)) return false;
@@ -481,7 +525,7 @@ export function extractServiceData(event: NostrEvent) {
     rate: getTag('rate'),
     radius: getTag('radius'),
     contact: getTag('contact'),
-    expires: getTag('expires') ? parseInt(getTag('expires')!) : undefined,
+    expires: (getTag('expiration') ?? getTag('expires')) ? parseInt((getTag('expiration') ?? getTag('expires'))!) : undefined,
   };
 }
 

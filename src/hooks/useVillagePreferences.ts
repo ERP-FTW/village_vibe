@@ -1,5 +1,6 @@
 import { useLocalStorage } from './useLocalStorage';
 import { useCurrentUser } from './useCurrentUser';
+import { slugifyVillage } from '@/lib/villages';
 
 export interface VillagePreferences {
   selectedVillages: string[];
@@ -41,8 +42,8 @@ export function useVillagePreferences() {
   };
 
   const addVillage = (village: string) => {
-    const villageSlug = village.toLowerCase().replace(/\s+/g, '-');
-    if (!preferences.selectedVillages.includes(villageSlug)) {
+    const villageSlug = slugifyVillage(village);
+    if (villageSlug && !preferences.selectedVillages.includes(villageSlug)) {
       setPreferences({
         ...preferences,
         selectedVillages: [...preferences.selectedVillages, villageSlug],
@@ -54,7 +55,7 @@ export function useVillagePreferences() {
   const removeVillage = (village: string) => {
     setPreferences({
       ...preferences,
-      selectedVillages: preferences.selectedVillages.filter(v => v !== village),
+      selectedVillages: preferences.selectedVillages.filter(v => v !== village && v !== slugifyVillage(village)),
     });
   };
 

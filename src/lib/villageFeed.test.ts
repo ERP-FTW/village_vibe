@@ -30,7 +30,8 @@ const noise = (count: number) => Array.from({ length: count }, (_, i) =>
   promotion(STRANGER, `30023:${STRANGER}:other-${i}`, ['westside'], 10_000 + i, true));
 
 /** NIP-01 matching over an in-memory store. Optionally rejects multi-letter tag filters. */
-function fakePool(store: NostrEvent[], opts: { rejectMultiLetterTags?: boolean; ignoreMultiLetterTags?: boolean } = {}) {
+function fakePool(store: NostrEvent[], opts: { rejectMultiLetterTags?: boolean; ignoreMultiLetterTags?: boolean; failIndexedCalls?: number } = {}) {
+  let indexedCalls = 0;
   const matches = (event: NostrEvent, filter: NostrFilter) => {
     if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
     if (filter.authors && !filter.authors.includes(event.pubkey)) return false;
@@ -45,6 +46,8 @@ function fakePool(store: NostrEvent[], opts: { rejectMultiLetterTags?: boolean; 
   };
   const pool = {
     async query(filters: NostrFilter[]) {
+      // Fail the first N requests that carry an indexed `#t` filter
+      if (filters.some(f => '#t' in f) && indexedCalls++ < (opts.failIndexedCalls ?? 0)) throw new Error('relay timed out');
       if (opts.rejectMultiLetterTags && filters.some(f => Object.keys(f).some(k => /^#.{2,}/.test(k)))) {
         throw new Error('unsupported filter');
       }
@@ -138,5 +141,28 @@ describe('village promotion discovery', () => {
     expect(feed.events).toEqual([]);
     expect(feed.promotionsComplete).toBe(false);
     expect(feed.promotionsCanReadFurther).toBe(false);
+  });
+
+  it('requests the labels again with the scan when the indexed request fails', async () => {
+    // All-villages feed: there is no legacy REQ, so only the scan can bring the labels back
+    const pool = fakePool([tribe, story, promotion(MODERATOR, `30023:${MEMBER}:seed-swap`, ['eastside'], 1_000, true)], { failIndexedCalls: 1 });
+
+    const feed = await readVillageFeed(pool, [], stories, new AbortController().signal);
+    expect(feed.events.map(e => e.id)).toEqual([story.id]);
+    expect(feed.promotionsComplete).toBe(true);
+  });
+
+  it('reports a failed first window as incomplete and retries it when reading further', async () => {
+    // The legacy REQ still returns village content, so the feed loads without labels
+    const tagged = ev(MEMBER, 30023, [['d', 'tagged'], ['title', 'Tagged'], ['a', TRIBE], ['village', 'eastside']], 600);
+    const store = [tribe, story, tagged, promotion(MODERATOR, `30023:${MEMBER}:seed-swap`, ['eastside'], 1_000, true)];
+
+    const failed = await read(fakePool(store, { failIndexedCalls: 2 }));
+    expect(failed.promotionsComplete).toBe(false);
+    expect(failed.promotionsCanReadFurther).toBe(true);
+
+    const retried = await read(fakePool(store, { failIndexedCalls: 2 }), 2);
+    expect(retried.events.map(e => e.id)).toContain(story.id);
+    expect(retried.promotionsComplete).toBe(true);
   });
 });

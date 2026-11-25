@@ -24,6 +24,13 @@ describe('base path', () => {
     expect(appUrl('tribe/abc:d', '/', 'https://vv.example')).toBe('https://vv.example/tribe/abc:d');
     expect(appUrl('/tribe/abc:d', '/village_vibe/', 'https://erp-ftw.github.io')).toBe('https://erp-ftw.github.io/village_vibe/tribe/abc:d');
   });
+
+  it('defaults missing and empty build paths to the domain root', () => {
+    for (const base of [undefined, '']) {
+      expect(routerBasename(base)).toBe('/');
+      expect(appUrl('/tribes', base, 'https://vv.example')).toBe('https://vv.example/tribes');
+    }
+  });
 });
 
 describe('share and QR links under a subpath', () => {
@@ -48,5 +55,19 @@ describe('share and QR links under a subpath', () => {
     vi.stubEnv('BASE_URL', '/');
     const { tribeServicesUrl } = await import('./qrGenerator');
     expect(tribeServicesUrl('pk:d')).toBe(`${window.location.origin}/tribe/pk:d?tab=services`);
+  });
+
+  it.each([undefined, ''])('loads the router and makes usable share links when BASE_URL is %s', async (base) => {
+    // Shakespeare builds with import.meta.env = {}, rather than Vite's BASE_URL.
+    vi.stubEnv('BASE_URL', base);
+    const { ROUTER_BASENAME } = await import('./appUrl');
+    const { createTribeShareLinks } = await import('./nostrLinks');
+    const { tribeServicesUrl } = await import('./qrGenerator');
+    const origin = window.location.origin;
+
+    expect(ROUTER_BASENAME).toBe('/');
+    const links = createTribeShareLinks('a'.repeat(64), 'garden club', 'Garden Club');
+    expect(links.web).toBe(`${origin}/tribe/${'a'.repeat(64)}:garden%20club`);
+    expect(tribeServicesUrl('pk:d')).toBe(`${origin}/tribe/pk:d?tab=services`);
   });
 });

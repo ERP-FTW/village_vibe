@@ -4,7 +4,7 @@ This document describes the custom Nostr event kinds and extensions used by Vill
 
 ## Linking Content to Tribes and Villages
 
-Events (36959, 31923), stories (30023) and services (38857, 30627) are linked to their tribe and villages with relay-indexed single-letter tags. Each link is also written in the legacy multi-letter form, so older clients keep working.
+Events (36959, 31923), stories (30023) and services (38857, 30627) are linked to their tribe and villages with relay-indexed single-letter tags. Each link is also written in the legacy multi-letter form, so older clients keep working. Goods (30402) carry the tribe link only; they are not shown in village feeds.
 
 | Link | Indexed tags (query with) | Legacy tag (still written) |
 |---|---|---|
@@ -74,6 +74,31 @@ Published when someone responds to a service ("I need this" or "I can help"), or
 | `["p", "<service author pubkey>"]` | yes | Notifies the author(s) of the referenced services |
 | `["by", "<responder pubkey>"]` | yes | Responder (equals the event pubkey) |
 | `["alt", …]` | yes | NIP-31 description |
+
+## Goods (NIP-99 Classified Listings, Kind 30402)
+
+Items that tribe members offer for sale are ordinary NIP-99 listings, linked to the tribe like other tribe content. Village Vibe adds no custom kind for them: a listing made here shows in other NIP-99 clients, and a listing made elsewhere shows here once it carries the tribe link.
+
+Content is the description.
+
+| Tag | Required | Meaning |
+|---|---|---|
+| `["d", "<id>"]` | yes | Identifier; the listing keeps its address `30402:<pubkey>:<d>` through edits |
+| `["title", …]` | yes | Item title |
+| `["a", "34550:<owner>:<d>"]`, `["tribe", "<tribe-d-tag>"]` | yes | Tribe link (see "Linking Content to Tribes and Villages") |
+| `["price", "<amount>", "<currency>"]` | no | Asking price: a decimal amount and an ISO 4217 code. Other codes such as `BTC` are shown as written. A price this app cannot read is left out of the card |
+| `["status", "active" \| "sold"]` | no | Anything other than `sold` is shown as available |
+| `["published_at", "<unix>"]` | no | When the listing first went up; edits keep it |
+| `["location", …]` | no | A general area in words, never an exact address |
+| `["image", "<url>"]` | no | Picture (https) |
+| `["r", "<url>"]` | no | Product page where the item can be bought; shown as a link |
+| `["summary", …]` | no | Short text, shown when the content is empty |
+| `["expiration", "<unix>"]` | no | NIP-40 expiry; expired listings are hidden |
+
+- **Tribe feed:** `{"kinds": [30402], "#a": ["34550:<owner>:<d>"]}`. Listings are accepted from the tribe's members only, and dropped when a tribe moderator labelled them `tribe-hidden` (kind 1985 with `["a", "30402:<pubkey>:<d>"]`).
+- **Questions ("Ask about this item"):** NIP-22 comments (kind 1111) whose root is the listing: `["A", "30402:<pubkey>:<d>"]`, `["K", "30402"]`, `["P", "<seller>"]`, and the same values in the lowercase `a`, `k`, `p` tags for a top-level question. They are public. Readers find them with `{"kinds": [1111], "#A": ["30402:<pubkey>:<d>"]}`.
+- **Sold:** the seller republishes the listing under the same `d` with `["status", "sold"]`; every other tag is kept.
+- Goods are not promoted to villages.
 
 ## Stories (NIP-23 Extension)
 

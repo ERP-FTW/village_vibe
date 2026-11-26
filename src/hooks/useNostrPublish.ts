@@ -21,7 +21,7 @@ function affectedQueries(event: NostrEvent): QueryKey[] {
     // Moderation and promotion labels change what every feed shows.
     case 1985: return [['story-labels'], ['event-labels'], ['service-labels'],
       ['tribe-events'], ['village-events'], ['tribe-stories'], ['village-stories'], ['multi-village-stories'],
-      ['tribe-services'], ['village-services']];
+      ['tribe-services'], ['village-services'], ['tribe-goods']];
     case 34871: return [['service-matches']];
     case 34550: return [['tribe', coordinate], ['public-tribes'], ['my-tribes'], ['tribe-name', tag('d')],
       ['join-requests', coordinate],
@@ -29,6 +29,7 @@ function affectedQueries(event: NostrEvent): QueryKey[] {
       ['tribe-events', coordinate], ['tribe-stories', coordinate], ['tribe-services', coordinate]];
     case 30627:
     case 38857: return [['service', coordinate], ['tribe-services'], ['village-services']];
+    case 30402: return [['tribe-goods']];
     case 31923:
     case 36959: return [['event', coordinate], ['tribe-events'], ['village-events']];
     case 30023: return [['story', coordinate], ['tribe-stories'], ['village-stories'], ['multi-village-stories']];

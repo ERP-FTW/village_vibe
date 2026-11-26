@@ -8,6 +8,7 @@ import { TribeEvents } from "./TribeEvents";
 import { TribeMembers } from "./TribeMembers";
 import { TribeAdminPanel } from "./TribeAdminPanel";
 import { TribeServices } from "../services/TribeServices";
+import { TribeGoods } from "../goods/TribeGoods";
 import { TribeStories } from "../stories/TribeStories";
 import { CreateEventDialog } from "../events/CreateEventDialog";
 import { LoginArea } from "@/components/auth/LoginArea";
@@ -17,13 +18,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RelaySelector } from "@/components/RelaySelector";
-import { Plus, Calendar, Users, Trophy, Settings, HandHeart, BookOpen, RefreshCw } from "lucide-react";
+import { Plus, Calendar, Users, Trophy, Settings, HandHeart, BookOpen, RefreshCw, ShoppingBag } from "lucide-react";
 
 interface TribeViewProps {
   tribeId: string;
 }
 
-const TRIBE_TABS = ['events', 'stories', 'services', 'members', 'badges', 'admin'];
+const TRIBE_TABS = ['events', 'stories', 'services', 'goods', 'members', 'badges', 'admin'];
 
 export function TribeView({ tribeId }: TribeViewProps) {
   const { user } = useCurrentUser();
@@ -170,6 +171,10 @@ export function TribeView({ tribeId }: TribeViewProps) {
               <HandHeart className="h-4 w-4" />
               Services
             </TabsTrigger>
+            <TabsTrigger value="goods" className="flex items-center gap-2">
+              <ShoppingBag className="h-4 w-4" />
+              Goods
+            </TabsTrigger>
             <TabsTrigger value="members" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Members
@@ -220,6 +225,10 @@ export function TribeView({ tribeId }: TribeViewProps) {
 
         <TabsContent value="services">
           <TribeServices tribeId={tribeId} isModerator={isModerator} />
+        </TabsContent>
+
+        <TabsContent value="goods">
+          <TribeGoods tribeId={tribeId} isModerator={isModerator} />
         </TabsContent>
 
         <TabsContent value="members">

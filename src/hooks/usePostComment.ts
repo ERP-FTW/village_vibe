@@ -82,11 +82,13 @@ export function usePostComment() {
 
       return event;
     },
-    onSuccess: (_, { root }) => {
-      // Invalidate and refetch comments
-      queryClient.invalidateQueries({
-        queryKey: ['comments', root instanceof URL ? root.toString() : root.id]
-      });
+    onSuccess: async (_, { root }) => {
+      const queryKey = ['comments', root instanceof URL ? root.toString() : root.id];
+      // A list that is still on its first load was requested before this comment existed,
+      // and invalidating alone does not restart a first load: it would finish without the
+      // comment and count as fresh. Cancel it, so the refetch is a new request.
+      await queryClient.cancelQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey });
     },
   });
 }

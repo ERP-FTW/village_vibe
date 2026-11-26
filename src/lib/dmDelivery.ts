@@ -56,7 +56,9 @@ function describeError(error: unknown): string {
   if (error && typeof error === 'object' && 'errors' in error && Array.isArray(error.errors)) {
     return describeError(error.errors[0] ?? 'every relay rejected it');
   }
-  if (error instanceof DOMException && error.name === 'TimeoutError') return 'timed out';
+  // A relay connection reports the publish timeout as a plain abort ("The signal has been
+  // aborted"). The only signal a delivery passes is that timeout, so both mean the same.
+  if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) return 'timed out';
   if (error instanceof Error) return error.message || error.name;
   return String(error);
 }

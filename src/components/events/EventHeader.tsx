@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, MapPin, Share2 } from "lucide-react";
+import { EventAudienceBadge } from "./EventAudienceBadge";
 
 interface EventHeaderProps {
   event: NostrEvent;
@@ -115,8 +116,9 @@ export function EventHeader({ event, userRSVP }: EventHeaderProps) {
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
               <div className="space-y-2">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <h1 className="text-3xl font-bold">{eventTitle}</h1>
+                  <EventAudienceBadge event={event} />
                   {isPast && (
                     <Badge variant="secondary">Past Event</Badge>
                   )}

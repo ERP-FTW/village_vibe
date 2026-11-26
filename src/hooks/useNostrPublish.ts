@@ -25,8 +25,10 @@ function affectedQueries(event: NostrEvent): QueryKey[] {
     case 34871: return [['service-matches']];
     case 34550: return [['tribe', coordinate], ['public-tribes'], ['my-tribes'], ['tribe-name', tag('d')],
       ['join-requests', coordinate],
-      // Membership decides whose content the tribe feeds include.
-      ['tribe-events', coordinate], ['tribe-stories', coordinate], ['tribe-services', coordinate]];
+      // Membership decides whose content the tribe feeds include,
+      ['tribe-events', coordinate], ['tribe-stories', coordinate], ['tribe-services', coordinate],
+      // and who is shown a tribe-only event wherever it is listed.
+      ['village-events']];
     case 30627:
     case 38857: return [['service', coordinate], ['tribe-services'], ['village-services']];
     case 31923:

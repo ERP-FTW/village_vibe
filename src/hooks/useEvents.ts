@@ -247,14 +247,19 @@ export function useVillageEvents(villageSlugOrList: string | string[], filters: 
 
   const { search, ...queryFilters } = filters;
   const villages = villageList(villageSlugOrList);
-  // The same rule as the tribe list. The feed is read together with the definitions of the
-  // tribes its events name, so the member lists are as recent as the events, and the rule is
-  // applied for the current viewer every time the list is read from the cache.
+  // The same rule as the tribe list, applied for the current viewer every time the list is
+  // read from the cache. The feed is read together with the definitions of the tribes its
+  // events name. A definition this app has read or published since then (a member added or
+  // removed here updates it at once) replaces the feed's own copy when it is newer, so a
+  // membership change never waits for the feed to be read again.
   const viewer = user?.pubkey;
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ['village-events', villages, queryFilters, preferences.hiddenTribes, viewer],
-    select: ({ events, tribes }: { events: NostrEvent[]; tribes: NostrEvent[] }) =>
-      applyEventFilters(visibleEvents(events, viewer, tribesById(tribes)), { search }),
+    select: ({ events, tribes }: { events: NostrEvent[]; tribes: NostrEvent[] }) => {
+      const known = queryClient.getQueriesData<NostrEvent | null>({ queryKey: ['tribe'] }).map(([, tribe]) => tribe);
+      return applyEventFilters(visibleEvents(events, viewer, tribesById([...tribes, ...known])), { search });
+    },
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
       const { signal } = c;

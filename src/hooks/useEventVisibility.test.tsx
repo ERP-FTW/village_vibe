@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Route, Routes } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
@@ -59,6 +60,9 @@ const EXPECTED: Array<[string, string | undefined, string[]]> = [
 // --- a relay small enough to read: events matched by kind, author, d, a and id ---------
 let viewer: string | undefined;
 let tribeLookup: 'ok' | 'fails' | Promise<void> = 'ok';
+/** The tribe definition the relay holds; publishing a new one replaces it. */
+let relayTribe = tribe;
+let signed = 0;
 
 function matches(event: NostrEvent, filter: NostrFilter): boolean {
   const tagged = (name: string) => event.tags.filter(tag => tag[0] === name).map(tag => tag[1]);
@@ -75,15 +79,24 @@ async function query(filters: NostrFilter[]): Promise<NostrEvent[]> {
     if (tribeLookup === 'fails') throw new Error('relays down');
     if (tribeLookup !== 'ok') await tribeLookup;
   }
-  return [tribe, ...ALL].filter(event => filters.some(filter => matches(event, filter)));
+  return [relayTribe, ...ALL].filter(event => filters.some(filter => matches(event, filter)));
+}
+async function publish(event: NostrEvent): Promise<void> {
+  if (event.kind === 34550) relayTribe = event;
 }
 
 vi.mock('@nostrify/react', async (importOriginal) => ({
   ...await importOriginal<typeof import('@nostrify/react')>(),
-  useNostr: () => ({ nostr: { query, event: async () => undefined } }),
+  useNostr: () => ({ nostr: { query, event: publish } }),
 }));
 vi.mock('@/hooks/useCurrentUser', () => ({
-  useCurrentUser: () => ({ user: viewer ? { pubkey: viewer, signer: {} } : undefined }),
+  useCurrentUser: () => ({
+    user: viewer ? {
+      pubkey: viewer,
+      // Enough of a signer to publish a tribe definition in these tests
+      signer: { signEvent: async (template: Omit<NostrEvent, 'id' | 'pubkey' | 'sig'>) => ({ ...template, id: `${++signed}`.padStart(64, '7'), pubkey: viewer!, sig: '' }) },
+    } : undefined,
+  }),
 }));
 vi.mock('@/hooks/useAuthor', () => ({ useAuthor: () => ({ data: undefined }) }));
 // The village reader has its own tests; here it returns these events and their tribe.
@@ -96,6 +109,7 @@ vi.mock('@/lib/villageFeed', async (importOriginal) => ({
 }));
 
 const { useTribeEvents, useVillageEvents } = await import('./useEvents');
+const { useNostrPublish } = await import('./useNostrPublish');
 const { EventView } = await import('@/components/events/EventView');
 const { NIP19Page } = await import('@/pages/NIP19Page');
 const { default: EventPage } = await import('@/pages/EventPage');
@@ -112,7 +126,19 @@ function watchForRestricted(): { seen: Set<string>; stop: () => void } {
   return { seen, stop: () => { look(); observer.disconnect(); } };
 }
 
-beforeEach(() => { viewer = undefined; tribeLookup = 'ok'; window.history.pushState({}, '', '/'); });
+/**
+ * The app with one query cache that lasts for the whole test, as it does in the browser:
+ * what one account loaded is still cached when the next account is looking.
+ */
+function appWithCache() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <TestApp><QueryClientProvider client={client}>{children}</QueryClientProvider></TestApp>
+  );
+  return { client, wrapper };
+}
+
+beforeEach(() => { viewer = undefined; tribeLookup = 'ok'; relayTribe = tribe; window.history.pushState({}, '', '/'); });
 afterEach(cleanup);
 
 describe('event visibility is the same wherever an event can be reached', () => {
@@ -202,20 +228,26 @@ describe('NIP-19 links follow the same rule', () => {
 });
 
 describe('switching accounts', () => {
-  it('updates the tribe list, and the next viewer never receives the previous viewer\'s events', async () => {
+  it('updates both lists, and the next viewer never receives the previous viewer\'s events', async () => {
+    const { wrapper } = appWithCache();
     viewer = HOST;
     const received: Array<{ viewer: string | undefined; titles: string[] }> = [];
     const { result, rerender } = renderHook(() => {
-      const events = useTribeEvents(TRIBE_ID);
-      received.push({ viewer, titles: (events.data ?? []).map(title) });
-      return events;
-    }, { wrapper: TestApp });
-    await waitFor(() => expect(result.current.data).toHaveLength(6));
+      const lists = { tribe: useTribeEvents(TRIBE_ID), village: useVillageEvents('east-side') };
+      received.push({ viewer, titles: [...(lists.tribe.data ?? []), ...(lists.village.data ?? [])].map(title) });
+      return lists;
+    }, { wrapper });
+    const bothShow = (count: number) => waitFor(() => {
+      expect(result.current.tribe.data).toHaveLength(count);
+      expect(result.current.village.data).toHaveLength(count);
+    });
+    await bothShow(6);
 
-    for (const [next, allowed] of [[STRANGER, 2], [MEMBER, 4], [undefined, 2], [INVITEE, 3]] as const) {
+    // Back and forth, so each account also returns to what was cached for it earlier.
+    for (const [next, allowed] of [[STRANGER, 2], [MEMBER, 4], [undefined, 2], [INVITEE, 3], [HOST, 6], [STRANGER, 2]] as const) {
       viewer = next;
       rerender();
-      await waitFor(() => expect(result.current.data).toHaveLength(allowed));
+      await bothShow(allowed);
     }
     for (const snapshot of received) {
       const allowed = EXPECTED.find(([, pubkey]) => pubkey === snapshot.viewer)![2];
@@ -224,10 +256,11 @@ describe('switching accounts', () => {
   });
 
   it('updates an open event page without showing the event in between', async () => {
+    const { wrapper } = appWithCache();
     viewer = INVITEE;
     // A new element each time: React skips re-rendering an identical one.
-    const page = () => <TestApp><EventView eventId={eventId(INVITED)} /></TestApp>;
-    const view = render(page());
+    const page = () => <EventView eventId={eventId(INVITED)} />;
+    const view = render(page(), { wrapper });
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Invited dinner' })).toBeInTheDocument());
 
     viewer = STRANGER;
@@ -241,6 +274,68 @@ describe('switching accounts', () => {
     viewer = HOST;
     view.rerender(page());
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Invited dinner' })).toBeInTheDocument());
+  });
+});
+
+describe('a membership change made in this app', () => {
+  const MEMBERS_EVENTS = ['Members planning', 'Owner members night'];
+
+  it('takes effect in the tribe list, the village list and an open event page at once', async () => {
+    const { wrapper } = appWithCache();
+    viewer = MEMBER;
+    const received: string[] = [];
+    const { result, rerender } = renderHook(() => {
+      const app = { tribe: useTribeEvents(TRIBE_ID), village: useVillageEvents('east-side'), publish: useNostrPublish() };
+      received.push(...[...(app.tribe.data ?? []), ...(app.village.data ?? [])].map(title));
+      return app;
+    }, { wrapper });
+    const bothShow = (count: number) => waitFor(() => {
+      expect(result.current.tribe.data).toHaveLength(count);
+      expect(result.current.village.data).toHaveLength(count);
+    });
+    await bothShow(4);
+    const page = () => <EventView eventId={eventId(MEMBERS_ONLY)} />;
+    const view = render(page(), { wrapper });
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Members planning' })).toBeInTheDocument());
+
+    // The owner removes the member, in this app.
+    viewer = OWNER;
+    rerender();
+    view.rerender(page());
+    await act(async () => {
+      await result.current.publish.mutateAsync({
+        kind: 34550, content: '', created_at: tribe.created_at + 60,
+        tags: tribe.tags.filter(([name, pubkey]) => !(name === 'p' && pubkey === MEMBER)),
+      });
+    });
+
+    // The removed member looks again. Their lists were cached a moment ago, with the old
+    // member list; from the first render on they hold no tribe-only event.
+    received.length = 0;
+    const watch = watchForRestricted();
+    viewer = MEMBER;
+    rerender();
+    view.rerender(page());
+    await bothShow(2);
+    await waitFor(() => expect(screen.getByText(/is shown only to members of its tribe/i)).toBeInTheDocument());
+    watch.stop();
+    expect(received.filter(text => MEMBERS_EVENTS.includes(text))).toEqual([]);
+    expect([...watch.seen]).toEqual([]);
+
+    // And someone the owner adds sees them without a reload.
+    viewer = OWNER;
+    rerender();
+    await act(async () => {
+      await result.current.publish.mutateAsync({
+        kind: 34550, content: '', created_at: tribe.created_at + 120,
+        tags: [...tribe.tags, ['p', STRANGER, '', 'member']],
+      });
+    });
+    viewer = STRANGER;
+    rerender();
+    view.rerender(page());
+    await bothShow(4);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Members planning' })).toBeInTheDocument());
   });
 });
 

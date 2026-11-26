@@ -104,7 +104,12 @@ export function TribeGoods({ tribeId, className, isModerator = false }: TribeGoo
                       : 'Log in to ask about items, or to list your own as a member.'}
                 </p>
               </div>
-              {isMember ? sellButton : !user ? <LoginArea className="max-w-60" /> : <RelaySelector className="w-full" />}
+              {isMember ? sellButton : !user && <LoginArea className="max-w-60" />}
+              {/* An empty answer can come from the relay in use rather than from the tribe. */}
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Listings may be on another relay.</p>
+                <RelaySelector className="w-full" />
+              </div>
             </div>
           </CardContent>
         </Card>

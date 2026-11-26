@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -32,6 +32,21 @@ export function GoodsCard({ event, className, showModerationControls = false }: 
   const [imageFailed, setImageFailed] = useState(false);
 
   const listing = extractGoodsData(event);
+  const description = listing.description || listing.summary;
+  // The card shows four lines. When the text is longer than that, it can be opened in place.
+  const descriptionRef = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  useEffect(() => {
+    const element = descriptionRef.current;
+    if (!element || expanded) return;
+    const measure = () => setClamped(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [description, expanded]);
+
   const metadata = author.data?.metadata;
   const sellerName = metadata?.name ?? genUserName(event.pubkey);
   const isSeller = user?.pubkey === event.pubkey;
@@ -73,10 +88,26 @@ export function GoodsCard({ event, className, showModerationControls = false }: 
       </CardHeader>
 
       <CardContent className="flex-1 space-y-3 pb-3">
-        {(listing.description || listing.summary) && (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words line-clamp-4">
-            {listing.description || listing.summary}
-          </p>
+        {description && (
+          <div>
+            <p
+              ref={descriptionRef}
+              className={cn('text-sm leading-relaxed whitespace-pre-wrap break-words', !expanded && 'line-clamp-4')}
+            >
+              {description}
+            </p>
+            {(clamped || expanded) && (
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                aria-expanded={expanded}
+                onClick={() => setExpanded(open => !open)}
+              >
+                {expanded ? 'Show less' : 'Show more'}
+              </Button>
+            )}
+          </div>
         )}
         {listing.location && (
           <div className="flex items-center text-xs text-muted-foreground">

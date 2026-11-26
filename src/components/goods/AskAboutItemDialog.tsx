@@ -37,6 +37,12 @@ export function AskAboutItemDialog({ event, children }: AskAboutItemDialogProps)
             Questions and answers are public on Nostr.
           </DialogDescription>
         </DialogHeader>
+        {/* The whole description: the card may show only its first lines. */}
+        {(listing.description || listing.summary) && (
+          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+            {listing.description || listing.summary}
+          </p>
+        )}
         {/* Loaded only while open: one comment query per opened item, not per card. */}
         {open && (
           <CommentsSection

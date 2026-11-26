@@ -16,6 +16,7 @@ import { useCurrentUser } from './useCurrentUser';
 import { useTribe } from './useTribes';
 import { MAX_FEED_AUTHORS, tribeEventAuthors, tribeModerators } from '@/lib/tribes';
 import { dropHidden } from '@/lib/moderation';
+import { eventVisibility, tribesById, visibleEvents, type EventVisibility } from '@/lib/eventVisibility';
 
 // Event types for multi-type support (whitelisted values)
 export const EVENT_TYPES = [
@@ -41,19 +42,20 @@ export const EVENT_TYPES = [
 
 export type EventType = typeof EVENT_TYPES[number];
 
-// Event visibility levels
-export type EventVisibility = 'public' | 'tribe-only' | 'private';
+// Event visibility levels (who the app shows an event to: see lib/eventVisibility)
+export type { EventVisibility };
 
-// Event filter options
+// Optional narrowing of an event list. Who may see an event is not decided here: the
+// lists apply that to every result (visibleEvents), whatever filters are given.
 export interface EventFilters {
   etypes?: EventType[];
+  /** Narrow to events of these visibility settings. */
   visibility?: EventVisibility[];
   dateFrom?: string;
   dateTo?: string;
   distance?: string;
   village?: string;
   search?: string;
-  showPrivateInvited?: boolean;
   limit?: number;
   /** Village feeds: windows of promotion labels to read (see readVillageFeed). */
   promotionPages?: number;
@@ -67,10 +69,18 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
   const tribeQuery = useTribe(tribeId);
   const tribeVersion = tribeQuery.data?.id ?? null;
 
+  // Who sees a restricted event depends on the viewer and on the tribe's member list. Both
+  // are part of the cache key, and the rule is applied to whatever the cache holds with the
+  // current viewer and member list, so a login, logout, account switch or membership change
+  // can never leave the previous answer on screen. Without a member list (the lookup failed)
+  // tribe-only events stay hidden, except from their organizer.
+  const viewer = user?.pubkey;
+  const tribes = tribesById([tribeQuery.data]);
+
   const { search, ...queryFilters } = filters;
   return useQuery({
-    queryKey: ['tribe-events', tribeId, tribeVersion, queryFilters, user?.pubkey],
-    select: (events: NostrEvent[]) => applyEventFilters(events, { search }),
+    queryKey: ['tribe-events', tribeId, tribeVersion, queryFilters, viewer],
+    select: (events: NostrEvent[]) => applyEventFilters(visibleEvents(events, viewer, tribes), { search }),
     staleTime: 60000, // Cache for 1 minute
     enabled: tribeQuery.isFetched,
     queryFn: async (c) => {
@@ -97,7 +107,7 @@ export function useTribeEvents(tribeId: string, filters: EventFilters = {}) {
         allowed.has(event.pubkey) && belongsToTribe(event.tags, tribeId)
         && (event.kind === 36959 ? validateEnhancedEvent(event) : validateCalendarEvent(event)));
 
-      validEvents = applyEventFilters(validEvents, queryFilters, user?.pubkey);
+      validEvents = applyEventFilters(validEvents, queryFilters);
 
       // Sort by start time (upcoming events first)
       return validEvents.sort((a, b) => {
@@ -237,15 +247,20 @@ export function useVillageEvents(villageSlugOrList: string | string[], filters: 
 
   const { search, ...queryFilters } = filters;
   const villages = villageList(villageSlugOrList);
+  // The same rule as the tribe list. The feed is read together with the definitions of the
+  // tribes its events name, so the member lists are as recent as the events, and the rule is
+  // applied for the current viewer every time the list is read from the cache.
+  const viewer = user?.pubkey;
   return useQuery({
-    queryKey: ['village-events', villages, queryFilters, preferences.hiddenTribes, user?.pubkey],
-    select: (events: NostrEvent[]) => applyEventFilters(events, { search }),
+    queryKey: ['village-events', villages, queryFilters, preferences.hiddenTribes, viewer],
+    select: ({ events, tribes }: { events: NostrEvent[]; tribes: NostrEvent[] }) =>
+      applyEventFilters(visibleEvents(events, viewer, tribesById(tribes)), { search }),
     staleTime: 30000, // Consider data fresh for 30 seconds
     queryFn: async (c) => {
       const { signal } = c;
 
 
-      const { events: villageEvents } = await readVillageFeed(nostr, villages,
+      const { events: villageEvents, tribes } = await readVillageFeed(nostr, villages,
         [{ kinds: [36959], limit: filters.limit || 150 }, { kinds: [31923], limit: 50 }], signal, { promotionPages: filters.promotionPages });
 
       // Validate events
@@ -253,7 +268,7 @@ export function useVillageEvents(villageSlugOrList: string | string[], filters: 
         event.kind === 36959 ? validateEnhancedEvent(event) : validateCalendarEvent(event)
       );
 
-      let filteredEvents = applyEventFilters(validEvents, queryFilters, user?.pubkey);
+      let filteredEvents = applyEventFilters(validEvents, queryFilters);
 
       // Filter out events from hidden tribes
       filteredEvents = filteredEvents.filter(event => {
@@ -263,11 +278,12 @@ export function useVillageEvents(villageSlugOrList: string | string[], filters: 
 
 
       // Sort by start time (upcoming events first)
-      return filteredEvents.sort((a, b) => {
+      filteredEvents.sort((a, b) => {
         const startA = parseInt(a.tags.find(([name]) => name === 'start')?.[1] || '0');
         const startB = parseInt(b.tags.find(([name]) => name === 'start')?.[1] || '0');
         return startA - startB;
       });
+      return { events: filteredEvents, tribes };
     },
   });
 }
@@ -663,12 +679,8 @@ export function validateAttendanceEvent(event: NostrEvent): boolean {
   return isCheckIn(event);
 }
 
-// Apply event filters
-export function applyEventFilters(
-  events: NostrEvent[],
-  filters: EventFilters,
-  userPubkey?: string
-): NostrEvent[] {
+// Narrow a list by the optional filters. This never decides who may see an event.
+export function applyEventFilters(events: NostrEvent[], filters: EventFilters): NostrEvent[] {
   let filteredEvents = events;
 
   // Filter by event types
@@ -679,23 +691,9 @@ export function applyEventFilters(
     });
   }
 
-  // Filter by visibility
+  // Narrow by visibility setting
   if (filters.visibility && filters.visibility.length > 0) {
-    filteredEvents = filteredEvents.filter(event => {
-      const visibility = event.tags.find(([name]) => name === 'visibility')?.[1] || 'public';
-
-      // Handle private events - only show if user is organizer or invitee
-      if (visibility === 'private') {
-        if (!userPubkey) return false;
-
-        const isOrganizer = event.pubkey === userPubkey;
-        const isInvited = event.tags.some(([name, value]) => name === 'p' && value === userPubkey);
-
-        return (isOrganizer || isInvited) && filters.showPrivateInvited;
-      }
-
-      return filters.visibility!.includes(visibility as EventVisibility);
-    });
+    filteredEvents = filteredEvents.filter(event => filters.visibility!.includes(eventVisibility(event)));
   }
 
   // Filter by date range

@@ -8,25 +8,34 @@ import { AttendeeCheckIn } from "./AttendeeCheckIn";
 import { EventDiscussion } from "./EventDiscussion";
 import { EventCoordinationTabs } from "./EventCoordinationTabs";
 import { useCoordinationTrust } from "@/hooks/useEventCoordination";
+import { useEventAccess } from "@/hooks/useEventAccess";
+import type { EventVisibility } from "@/lib/eventVisibility";
 import type { NostrEvent } from "@nostrify/nostrify";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RelaySelector } from "@/components/RelaySelector";
-import { Users, QrCode, Trophy, MessageCircle, ClipboardList } from "lucide-react";
+import { LoginArea } from "@/components/auth/LoginArea";
+import { Users, QrCode, Trophy, MessageCircle, ClipboardList, Lock } from "lucide-react";
 
 interface EventViewProps {
   eventId: string;
 }
 
+/**
+ * The event page, for every way of reaching an event: the /event route, and naddr, nevent
+ * and note links, which all end up here. Who is shown the event is decided before anything
+ * about it is rendered or read (see lib/eventVisibility).
+ */
 export function EventView({ eventId }: EventViewProps) {
   const { user } = useCurrentUser();
   const { data: event, isLoading: eventLoading, error: eventError } = useEvent(eventId);
-  const { data: rsvps, isLoading: rsvpsLoading } = useEventRSVPs(eventId);
-  const { data: userRSVP } = useUserRSVP(eventId, user?.pubkey);
-  const { data: attendanceRecords } = useEventAttendance(eventId);
+  const access = useEventAccess(event);
 
-  if (eventLoading) {
+  // Also while a tribe-only event waits for its member list: until that is known the event
+  // is neither shown nor refused.
+  if (eventLoading || (event && access.state === 'checking')) {
     return (
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="space-y-4">
@@ -77,6 +86,79 @@ export function EventView({ eventId }: EventViewProps) {
       </div>
     );
   }
+
+  if (access.state === 'unverified') {
+    return <MembershipUnverified onRetry={access.retry} />;
+  }
+
+  if (access.state !== 'visible') {
+    return <RestrictedEvent visibility={access.visibility} loggedIn={!!user} />;
+  }
+
+  return <EventDetails event={event} eventId={eventId} />;
+}
+
+/** Shown instead of a tribe-only event when its tribe's member list could not be read. */
+function MembershipUnverified({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="max-w-2xl mx-auto">
+      <Card className="border-dashed">
+        <CardContent className="py-12 px-8 text-center">
+          <div className="max-w-sm mx-auto space-y-6">
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold">Could not check your tribe membership</h3>
+              <p className="text-muted-foreground">
+                This event is for the members of its tribe, and the tribe's member list did not load
+                from the current relays.
+              </p>
+            </div>
+            <Button onClick={onRetry}>Try again</Button>
+            <RelaySelector className="w-full" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/** Shown instead of an event the viewer is not among the audience of. Says nothing about it. */
+function RestrictedEvent({ visibility, loggedIn }: { visibility: EventVisibility; loggedIn: boolean }) {
+  return (
+    <div className="max-w-2xl mx-auto">
+      <Card className="border-dashed">
+        <CardContent className="py-12 px-8 text-center">
+          <div className="max-w-sm mx-auto space-y-6">
+            <Lock className="h-8 w-8 mx-auto text-muted-foreground" aria-hidden="true" />
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold">
+                {visibility === 'tribe-only'
+                  ? 'This event is shown only to members of its tribe'
+                  : 'This event is shown only to the people its organizer invited'}
+              </h3>
+              <p className="text-muted-foreground">
+                {loggedIn
+                  ? 'The account you are using is not one of them. If another of your accounts is, switch to it.'
+                  : 'Log in to see it if that includes you.'}
+              </p>
+            </div>
+            {/* Logged out: log in. Logged in: the account switcher. */}
+            <LoginArea className="max-w-60 mx-auto" />
+            <p className="text-xs text-muted-foreground">
+              This is how Village Vibe presents the event. The listing itself is a public Nostr record.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/** The event itself. Mounted only for a viewer the event is shown to, so nothing here reads for anyone else. */
+function EventDetails({ event, eventId }: { event: NostrEvent; eventId: string }) {
+  const { user } = useCurrentUser();
+  const { data: rsvps, isLoading: rsvpsLoading } = useEventRSVPs(eventId);
+  const { data: userRSVP } = useUserRSVP(eventId, user?.pubkey);
+  const { data: attendanceRecords } = useEventAttendance(eventId);
 
   // Check if user is the event host
   const isHost = user?.pubkey === event.pubkey;

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EventModerationDialog } from "./EventModerationDialog";
+import { EventAudienceBadge } from "./EventAudienceBadge";
 import { TribeName } from '@/components/tribes/TribeName';
 // import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar, MapPin, Clock, Users, MoreHorizontal } from "lucide-react";
@@ -85,6 +86,7 @@ export function EventCard({ event, isPast = false, showModerationActions = false
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2">
               <h3 className="font-semibold line-clamp-2 flex-1">{eventTitle}</h3>
+              <EventAudienceBadge event={event} className="text-xs" />
               {isPast && (
                 <Badge variant="secondary" className="text-xs">
                   Past

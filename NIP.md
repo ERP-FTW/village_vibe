@@ -203,6 +203,21 @@ Events use a short description (≤500 chars) in the `content` field. Longer det
 3. **Private details:** an exact address, entry instructions and anything confidential go only in encrypted direct messages to each invitee (NIP-17 gift wraps; NIP-04 for signers without NIP-44). They must never appear in the event's content or tags.
 4. **Write the public fields accordingly:** use a general place (e.g. "near the library") and keep confidential information in the message.
 
+### Who Village Vibe shows a restricted event to
+
+The same rule is applied in tribe lists, village lists, the event page and NIP-19 links (`naddr`, `nevent`, `note`), for the account that is logged in at that moment:
+
+| `visibility` | Shown to |
+|---|---|
+| missing, empty or `public` | everyone, logged in or not |
+| `tribe-only` | the organizer, and current members of the tribe the event names, including its owner, admins and moderators |
+| `private` | the organizer, and the pubkeys in the event's `p` tags. A tribe role is not an invitation |
+
+- **Which tribe:** the one named by the event's author-qualified coordinate, `["a", "34550:<owner>:<d>"]`, read from that tribe's current definition. The legacy `["tribe", "<d>"]` tag alone names no tribe, because any tribe can reuse a d tag: a `tribe-only` event without the coordinate is shown to its organizer only.
+- **Unknown membership:** while the member list is loading, a `tribe-only` event is not shown. If the list cannot be read, the event page says so and offers to check again; lists leave the event out. Public events, the viewer's own events and invitations do not depend on a member list and keep working.
+- **Unrecognized value:** a visibility value other than the three above is treated like `private`.
+- Everyone else gets a notice that the event is shown only to its tribe's members or its invitees, with none of the event's fields. This is a presentation rule in this app. It hides nothing on the relays (see 1).
+
 Village Vibe's event form currently publishes public events only; the hook supports the restricted flow for future use.
 
 ## Event Moderation (NIP-32 Labels)

@@ -7,6 +7,11 @@ import { slugifyVillage } from '@/lib/villages';
 export interface VillageFeed {
   /** Content allowed into the requested villages, newest version of each address. */
   events: NostrEvent[];
+  /**
+   * The tribe definitions the content names, as read for this feed. Besides deciding what
+   * a village admits, they hold the member lists that decide who is shown a tribe-only event.
+   */
+  tribes: NostrEvent[];
   /** Coordinates featured in the requested villages by a moderator of the content's tribe. */
   featured: Set<string>;
   /**
@@ -343,5 +348,5 @@ export async function readVillageFeed(
       if ([...trust.featuredIn(event, related)].some(wantsVillage)) featured.add(address);
     }
   }
-  return { events, featured, promotionsComplete, promotionsCanReadFurther };
+  return { events, tribes, featured, promotionsComplete, promotionsCanReadFurther };
 }

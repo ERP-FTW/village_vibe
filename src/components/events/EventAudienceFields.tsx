@@ -184,8 +184,8 @@ export function EventAudienceFields({ value, onChange, entry, onEntryChange, onA
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  These two fields never go into the event. They are sent to each invitee, and kept here only until
-                  this form closes.
+                  These two fields never go into the event. They are sent to each invitee, and cleared when this
+                  form closes.
                 </p>
               </>
             ) : (

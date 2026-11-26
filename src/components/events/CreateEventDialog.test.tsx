@@ -341,6 +341,40 @@ describe('inviting people to an event', () => {
     expectConfidentialTextNowhereElse();
   });
 
+  it('forgets what was written for invitees when the form is dismissed, and keeps the listing draft', async () => {
+    const ana = guest();
+    await openForm();
+    await fillListing('Invited dinner');
+    await user.click(screen.getByRole('radio', { name: /People I invite/ }));
+    await invite(ana.pubkey);
+    const reopen = async () => {
+      await closed();
+      await user.click(screen.getByRole('button', { name: 'New event' }));
+      await screen.findByRole('dialog');
+    };
+    const dismissals = [
+      () => user.click(screen.getByRole('button', { name: 'Cancel' })),
+      () => user.keyboard('{Escape}'),
+      () => user.click(screen.getByRole('button', { name: 'Close' })),
+    ];
+    for (const dismissForm of dismissals) {
+      await user.type(field(/Exact location/), ADDRESS);
+      await user.type(field(/Details for invitees/), PHRASE);
+      await dismissForm();
+      await reopen();
+      // The public draft and the invitee list are still there; the private text is not.
+      expect(field(/Event Title/)).toHaveValue('Invited dinner');
+      expect(screen.getByRole('radio', { name: /People I invite/ })).toBeChecked();
+      expect(invitedList()).toHaveLength(1);
+      expect(field(/Exact location/)).toHaveValue('');
+      expect(field(/Details for invitees/)).toHaveValue('');
+      expect(document.body.innerHTML).not.toContain(PHRASE);
+      expect(document.body.innerHTML).not.toContain(ADDRESS);
+    }
+    expect(attempts).toEqual([]);
+    expectConfidentialTextNowhereElse();
+  });
+
   it('names the invitees without messaging them when the host turns invitations off', async () => {
     const ana = guest();
     await openForm();

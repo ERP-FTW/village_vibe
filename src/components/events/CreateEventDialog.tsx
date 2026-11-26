@@ -432,6 +432,15 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
   };
 
   /**
+   * Close without publishing. The listing draft stays for when the form is reopened; what
+   * was written only for invitees does not outlive the form it was typed into.
+   */
+  const dismiss = () => {
+    setOpen(false);
+    setFormData(prev => ({ ...prev, privateDetails: '', exactLocation: '' }));
+  };
+
+  /**
    * Move what is typed in the invite field into the invitee list. Valid people are added
    * (each once, whatever form they were given in); anything else stays in the field with the
    * reason shown. Returns the resulting list and whether the whole entry was usable.
@@ -662,7 +671,7 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
 
 
   return (
-    <Dialog open={open} onOpenChange={(next) => next ? setOpen(true) : (invitationRecovery ? finish() : setOpen(false))}>
+    <Dialog open={open} onOpenChange={(next) => next ? setOpen(true) : (invitationRecovery ? finish() : dismiss())}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
@@ -949,7 +958,7 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
           />
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
+            <Button type="button" variant="outline" onClick={dismiss} className="flex-1">
               Cancel
             </Button>
             <Button

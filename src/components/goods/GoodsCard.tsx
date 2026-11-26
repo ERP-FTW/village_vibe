@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
 import type { NostrEvent } from '@nostrify/nostrify';
@@ -27,6 +28,8 @@ export function GoodsCard({ event, className, showModerationControls = false }: 
   const { toast } = useToast();
   const author = useAuthor(event.pubkey);
   const { mutate: setStatus, isPending: isUpdating } = useSetGoodsStatus();
+  // A picture that no longer loads is left out rather than shown as a broken image.
+  const [imageFailed, setImageFailed] = useState(false);
 
   const listing = extractGoodsData(event);
   const metadata = author.data?.metadata;
@@ -47,9 +50,15 @@ export function GoodsCard({ event, className, showModerationControls = false }: 
 
   return (
     <Card className={cn('flex flex-col overflow-hidden', isSold && 'opacity-75', className)}>
-      {listing.image && (
+      {listing.image && !imageFailed && (
         <div className="aspect-[4/3] w-full overflow-hidden bg-muted">
-          <img src={listing.image} alt={listing.title} loading="lazy" className="h-full w-full object-cover" />
+          <img
+            src={listing.image}
+            alt={listing.title}
+            loading="lazy"
+            className="h-full w-full object-cover"
+            onError={() => setImageFailed(true)}
+          />
         </div>
       )}
 

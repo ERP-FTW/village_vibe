@@ -6,7 +6,7 @@ import { useTribe } from './useTribes';
 import { belongsToTribe, parseTribeId, tribeCoordinate, tribeLinkTags } from '@/lib/contentTags';
 import { dropHidden } from '@/lib/moderation';
 import { MODERATION_LABELS } from '@/lib/moderationLabels';
-import { tribeMemberAuthors, tribeModerators, withSingleTags } from '@/lib/tribes';
+import { MAX_FEED_AUTHORS, tribeMemberAuthors, tribeModerators, withSingleTags } from '@/lib/tribes';
 
 /** NIP-99 classified listing. Tribe goods are ordinary listings linked to the tribe. */
 export const GOODS_KIND = 30402;
@@ -181,10 +181,17 @@ export function useTribeGoods(tribeId: string) {
 
       // Any member can list an item in their tribe (the same rule as services).
       const tribe = tribeQuery.data ?? null;
-      const allowed = new Set(tribe ? tribeMemberAuthors(tribe) : [parsed.pubkey]);
+      const members = tribe ? tribeMemberAuthors(tribe) : [parsed.pubkey];
+      const allowed = new Set(members);
       const moderators = tribe ? tribeModerators(tribe) : [parsed.pubkey];
+      const tagged = { kinds: [GOODS_KIND], '#a': [tribeCoordinate(tribeId)], limit: 200 };
       const records = await dropHidden(nostr, await nostr.query([
-        { kinds: [GOODS_KIND], '#a': [tribeCoordinate(tribeId)], limit: 200 },
+        // Anyone can tag a listing with the tribe, so the relay is asked for members' listings
+        // only: other people's cannot use up the limit and push the members' items out.
+        { ...tagged, authors: members.slice(0, MAX_FEED_AUTHORS) },
+        // A tribe with more members than a relay accepts as an author list: the rest can
+        // only be found through the tag.
+        ...(members.length > MAX_FEED_AUTHORS ? [tagged] : []),
       ], { signal }), moderators, signal);
 
       return records

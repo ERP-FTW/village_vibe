@@ -50,6 +50,17 @@ export const EVENT_PUBLIC_FIELDS: PublicField[] = [
   AUTHOR_FIELD,
 ];
 
+export const GOODS_PUBLIC_FIELDS: PublicField[] = [
+  { label: 'Title and description', tags: ['title'], content: true },
+  { label: 'Price and currency', tags: ['price'] },
+  { label: 'Whether the item is available or sold', tags: ['status'] },
+  { label: 'Area, if you give one (use a general area, not your address)', tags: ['location'] },
+  { label: 'Picture and product page link, if you add them', tags: ['image', 'r'] },
+  { label: 'Tribe', tags: ['a', 'tribe'] },
+  { label: 'Listing identifier and the date it was first posted', tags: ['d', 'published_at'] },
+  AUTHOR_FIELD,
+];
+
 /** Tag names on an event that no public field describes (should be empty). */
 export function undisclosedTags(tags: string[][], fields: PublicField[]): string[] {
   const disclosed = new Set(fields.flatMap(field => field.tags));

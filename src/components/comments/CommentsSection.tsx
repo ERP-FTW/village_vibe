@@ -14,6 +14,8 @@ interface CommentsSectionProps {
   emptyStateSubtitle?: string;
   className?: string;
   limit?: number;
+  /** Placeholder of the comment box, e.g. "Ask about this item…". */
+  placeholder?: string;
 }
 
 export function CommentsSection({ 
@@ -23,6 +25,7 @@ export function CommentsSection({
   emptyStateSubtitle = "Be the first to share your thoughts!",
   className,
   limit = 500,
+  placeholder,
 }: CommentsSectionProps) {
   const { data: commentsData, isLoading, error } = useComments(root, limit);
   const comments = commentsData?.topLevelComments || [];
@@ -55,7 +58,7 @@ export function CommentsSection({
       </CardHeader>
       <CardContent className="px-2 pb-6 pt-4 sm:p-6 sm:pt-0 space-y-6">
         {/* Comment Form */}
-        <CommentForm root={root} />
+        <CommentForm root={root} placeholder={placeholder} />
 
         {/* Comments List */}
         {isLoading ? (

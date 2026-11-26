@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useUploadFile } from "@/hooks/useUploadFile";
 import { PublicFieldsNotice } from "@/components/privacy/PublicFieldsNotice";
 import { EVENT_PUBLIC_FIELDS } from "@/lib/publicFields";
 import { InvitationRecovery } from "./InvitationRecovery";
-import { useCreateEnhancedEvent, useSendPrivateEventDetails, useRetryInvitations, invitationsComplete, type InvitationOutcome, type EventType, type EventVisibility, getEventTypeInfo, EVENT_TYPES } from "@/hooks/useEvents";
-import { usePublicTribes } from "@/hooks/useTribes";
+import { EventAudienceFields } from "./EventAudienceFields";
+import { useCreateEnhancedEvent, useSendPrivateEventDetails, useRetryInvitations, buildPrivateDetailsMessage, invitationsComplete, type InvitationOutcome, type EventType, type EventVisibility, getEventTypeInfo, EVENT_TYPES } from "@/hooks/useEvents";
+import { mergeInvitees, parseInvitees } from "@/lib/invitees";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,9 +43,6 @@ interface EventFormData {
   privateDetails: string;
   exactLocation: string;
   sendDMs: boolean;
-  enableZaps: boolean;
-  enableComments: boolean;
-  autoPromptStory: boolean;
   // Type-specific data
   foodSlots: string[];
   dietNotes: string;
@@ -369,6 +367,13 @@ function TypeSpecificFields({ formData, setFormData }: {
   );
 }
 
+/** Moves keyboard focus to what replaced the form, so it is announced and can be acted on. */
+function FocusOnMount({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+  return <div ref={ref} tabIndex={-1} className="outline-none">{children}</div>;
+}
+
 const EMPTY_EVENT_FORM: EventFormData = {
   title: '',
   summary: '',
@@ -385,9 +390,6 @@ const EMPTY_EVENT_FORM: EventFormData = {
   privateDetails: '',
   exactLocation: '',
   sendDMs: true,
-  enableZaps: false,
-  enableComments: true,
-  autoPromptStory: true,
   // Type-specific data
   foodSlots: [] as string[],
   dietNotes: '',
@@ -402,7 +404,6 @@ const EMPTY_EVENT_FORM: EventFormData = {
 
 export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps) {
   const { user } = useCurrentUser();
-  usePublicTribes(); // Keep hook active for potential future use
   const { mutateAsync: createEnhancedEvent, isPending: isCreating } = useCreateEnhancedEvent();
   const { mutateAsync: sendPrivateDetails, isPending: isSendingInvites } = useSendPrivateEventDetails();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
@@ -415,17 +416,53 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
   const [invitationRecovery, setInvitationRecovery] = useState<InvitationOutcome | null>(null);
   const { mutateAsync: retryInvitations, isPending: isRetryingInvites } = useRetryInvitations();
 
+  // The invite field: what is typed and not added yet, and what was wrong with it
+  const [inviteeEntry, setInviteeEntry] = useState('');
+  const [inviteeProblems, setInviteeProblems] = useState<string[]>([]);
+  const inviteInputRef = useRef<HTMLTextAreaElement>(null);
+  // One submission at a time: the event must be published once, whatever is clicked meanwhile
+  const submitting = useRef(false);
+
   const finish = () => {
     setOpen(false);
     setInvitationRecovery(null);
     setFormData(EMPTY_EVENT_FORM);
+    setInviteeEntry('');
+    setInviteeProblems([]);
+  };
+
+  /**
+   * Close without publishing. The listing draft stays for when the form is reopened; what
+   * was written only for invitees does not outlive the form it was typed into.
+   */
+  const dismiss = () => {
+    setOpen(false);
+    setFormData(prev => ({ ...prev, privateDetails: '', exactLocation: '' }));
+  };
+
+  /**
+   * Move what is typed in the invite field into the invitee list. Valid people are added
+   * (each once, whatever form they were given in); anything else stays in the field with the
+   * reason shown. Returns the resulting list and whether the whole entry was usable.
+   */
+  const addInvitees = (): { invitees: string[]; clean: boolean } => {
+    const { pubkeys, rejected } = parseInvitees(inviteeEntry);
+    const self = !!user && pubkeys.includes(user.pubkey);
+    const invitees = mergeInvitees(formData.invitees, pubkeys.filter(pubkey => pubkey !== user?.pubkey));
+    setFormData(prev => ({ ...prev, invitees: mergeInvitees(prev.invitees, invitees) }));
+    setInviteeEntry(rejected.map(({ entry }) => entry).filter(Boolean).join(' '));
+    setInviteeProblems([
+      ...rejected.map(({ value, reason }) => `“${value}” ${reason}.`),
+      ...(self ? ['You are the organizer, so you are not added as an invitee.'] : []),
+    ]);
+    return { invitees, clean: rejected.length === 0 };
   };
 
 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+    if (submitting.current) return;
 
     if (!user) {
       toast({
@@ -454,15 +491,24 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
       return;
     }
 
-    if (formData.visibility === 'private' && formData.invitees.length === 0) {
-      toast({
-        title: "Error",
-        description: "Private events must have at least one invitee",
-        variant: "destructive",
-      });
-      return;
+    // Invitees are checked before anything is signed: whatever is still typed in the field is
+    // read too, and one entry that is not a person's key stops the submission.
+    let invitees: string[] = [];
+    if (formData.visibility === 'private') {
+      const added = addInvitees();
+      invitees = added.invitees;
+      if (!added.clean) {
+        inviteInputRef.current?.focus();
+        return;
+      }
+      if (invitees.length === 0) {
+        setInviteeProblems(['Add at least one person to invite.']);
+        inviteInputRef.current?.focus();
+        return;
+      }
     }
 
+    submitting.current = true;
     try {
       // Parse date and time
       const eventDateTime = new Date(`${formData.date}T${formData.time}`);
@@ -553,15 +599,23 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
         etypes: formData.etypes,
         visibility: formData.visibility,
         villages: formData.villages,
-        invitees: formData.invitees,
+        invitees,
         typeSpecificData,
       });
-      if (formData.visibility === 'private' && formData.sendDMs && formData.invitees.length) {
-        const outcome = await sendPrivateDetails({
-          eventId: result.eventId, eventTitle: formData.title.trim(), invitees: formData.invitees,
+      if (formData.visibility === 'private' && formData.sendDMs && invitees.length) {
+        const invitation = {
+          eventId: result.eventId, eventTitle: formData.title.trim(), invitees,
           privateDetails: formData.privateDetails.trim() || 'See you there!',
           exactLocation: formData.exactLocation.trim() || formData.place.trim(), organizer: user.pubkey,
-        });
+        };
+        // The event is published from here on. Whatever happens to the invitations, the form
+        // must end in "done" or "retry the invitations", never in a state that publishes again.
+        const outcome = await sendPrivateDetails(invitation).catch((error): InvitationOutcome => ({
+          eventId: result.eventId,
+          message: buildPrivateDetailsMessage(invitation),
+          deliveries: [],
+          unprepared: invitees.map(recipient => ({ recipient, error: error instanceof Error ? error.message : String(error) })),
+        }));
         if (!invitationsComplete(outcome)) {
           // Keep the dialog (and the draft) open so only the missing invitations are retried
           setInvitationRecovery(outcome);
@@ -583,6 +637,8 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
         description: `Failed to create event: ${error instanceof Error ? error.message : String(error)}`,
         variant: "destructive",
       });
+    } finally {
+      submitting.current = false;
     }
   };
 
@@ -615,7 +671,7 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
 
 
   return (
-    <Dialog open={open} onOpenChange={(next) => next ? setOpen(true) : (invitationRecovery ? finish() : setOpen(false))}>
+    <Dialog open={open} onOpenChange={(next) => next ? setOpen(true) : (invitationRecovery ? finish() : dismiss())}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
@@ -625,20 +681,22 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
         </DialogHeader>
 
         {invitationRecovery ? (
-          <InvitationRecovery
-            outcome={invitationRecovery}
-            retrying={isRetryingInvites}
-            onClose={finish}
-            onRetry={async () => {
-              const next = await retryInvitations(invitationRecovery);
-              if (invitationsComplete(next)) {
-                toast({ title: 'Invitations delivered', description: 'Every invitee now has the private details.' });
-                finish();
-              } else {
-                setInvitationRecovery(next);
-              }
-            }}
-          />
+          <FocusOnMount>
+            <InvitationRecovery
+              outcome={invitationRecovery}
+              retrying={isRetryingInvites}
+              onClose={finish}
+              onRetry={async () => {
+                const next = await retryInvitations(invitationRecovery);
+                if (invitationsComplete(next)) {
+                  toast({ title: 'Invitations delivered', description: 'Every invitee now has the private details.' });
+                  finish();
+                } else {
+                  setInvitationRecovery(next);
+                }
+              }}
+            />
+          </FocusOnMount>
         ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Info */}
@@ -877,10 +935,30 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
             </div>
           </div>
 
-          <PublicFieldsNotice subject="this event" fields={EVENT_PUBLIC_FIELDS} />
+          <Separator />
+
+          <EventAudienceFields
+            value={formData}
+            onChange={(patch) => setFormData(prev => ({ ...prev, ...patch }))}
+            entry={inviteeEntry}
+            onEntryChange={(entry) => { setInviteeEntry(entry); setInviteeProblems([]); }}
+            onAdd={() => { addInvitees(); inviteInputRef.current?.focus(); }}
+            problems={inviteeProblems}
+            inviteInputRef={inviteInputRef}
+          />
+
+          <PublicFieldsNotice
+            subject="this event"
+            fields={EVENT_PUBLIC_FIELDS}
+            note={formData.visibility === 'private'
+              ? 'The exact location and the details for invitees are not in this list: they are only sent by encrypted direct message.'
+              : formData.visibility === 'tribe-only'
+                ? 'Showing it to tribe members only is a Village Vibe setting. It hides nothing on Nostr.'
+                : undefined}
+          />
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
+            <Button type="button" variant="outline" onClick={dismiss} className="flex-1">
               Cancel
             </Button>
             <Button
@@ -893,6 +971,11 @@ export function CreateEventDialog({ children, tribeId }: CreateEventDialogProps)
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Creating...
+                </>
+              ) : isSendingInvites ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Sending invitations...
                 </>
               ) : (
                 'Create Event'

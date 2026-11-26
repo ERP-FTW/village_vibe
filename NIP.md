@@ -218,7 +218,15 @@ The same rule is applied in tribe lists, village lists, the event page and NIP-1
 - **Unrecognized value:** a visibility value other than the three above is treated like `private`.
 - Everyone else gets a notice that the event is shown only to its tribe's members or its invitees, with none of the event's fields. This is a presentation rule in this app. It hides nothing on the relays (see 1).
 
-Village Vibe's event form currently publishes public events only; the hook supports the restricted flow for future use.
+### Creating a restricted event in Village Vibe
+
+The event form asks who Village Vibe shows the event to: everyone (the default), members of the tribe, or the people the organizer invites. Beside that choice it says that the listing and the invitee list are public on Nostr and that only direct messages are encrypted.
+
+For an invited-people event:
+
+- Invitees are entered as `npub`, `nprofile` or 64-character hex keys (a `nostr:` prefix is accepted), several at once. They are normalized to hex and listed once each, whatever form they were given in. Anything else (a secret key, a post, a malformed key) is rejected before anything is signed, and at least one invitee other than the organizer is required.
+- The exact location and the details for invitees are separate fields from the public place and description. They are never put in the event: with *send invitations* on, they are sent to each invitee as a NIP-17 direct message (NIP-04 for signers without NIP-44). They are held only in memory while the form is open.
+- The event is published once. If an invitation cannot be delivered, the form shows who was reached and offers to retry: the retry re-sends only the missing deliveries, with the same signed messages, to the same event. Nobody who already has the invitation is sent it again.
 
 ## Event Moderation (NIP-32 Labels)
 

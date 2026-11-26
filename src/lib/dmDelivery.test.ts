@@ -93,6 +93,16 @@ describe('direct message delivery', () => {
     expect(noInbox.published[0].relays).toBeUndefined();
   });
 
+  it('says "timed out" when a relay does not answer the publish in time', async () => {
+    // What a relay connection throws when the publish timeout fires
+    const silent: DeliveryRelays = {
+      query: async () => [],
+      event: async () => { throw new DOMException('The signal has been aborted', 'AbortError'); },
+    };
+    const failed = await deliverMissing(silent, newDelivery(await prepareDirectMessage(signer, sender, person(), 'hi')));
+    expect(failed.recipient).toEqual({ status: 'failed', error: 'timed out' });
+  });
+
   it('looks up the recipient and sender inboxes together, once', async () => {
     const recipient = person();
     const fake = fakeRelays({ inboxes: { [recipient]: [INBOX], [sender]: [SENDER_INBOX] } });
